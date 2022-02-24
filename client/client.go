@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	controller "io.pravega.pravega-client-go/controller-client/proto"
+	controller "io.pravega.pravega-client-go/controller/proto"
 	"time"
 )
 

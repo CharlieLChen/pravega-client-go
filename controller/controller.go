@@ -3,7 +3,7 @@ package controller
 import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	types "io.pravega.pravega-client-go/controller-client/proto"
+	types "io.pravega.pravega-client-go/controller/proto"
 )
 
 type Controller struct {
@@ -36,4 +36,11 @@ func (controller *Controller) GetCurrentSegments(scope, streamName string) ([]ty
 		segmentIds[i] = *segmentRange.SegmentId
 	}
 	return segmentIds, nil
+}
+func (controller *Controller) GetSegmentStoreURI(segmentId *types.SegmentId) (*types.NodeUri, error) {
+	nodeUri, err := controller.controllerClient.GetURI(controller.ctx, segmentId)
+	if err != nil {
+		return nil, err
+	}
+	return nodeUri, nil
 }

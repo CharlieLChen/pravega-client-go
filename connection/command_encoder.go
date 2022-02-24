@@ -16,40 +16,43 @@ var (
 )
 
 type CommandEncoder struct {
-	buffer *io.ByteBuffer
+	Buffer *io.ByteBuffer
 }
 
 func NewCommandEncoder() *CommandEncoder {
 	return &CommandEncoder{
-		buffer: io.NewByteBuffer(EncoderBufferSize),
+		Buffer: io.NewByteBuffer(EncoderBufferSize),
 	}
 }
-func WriteMessage(msg protocal.WireCommand, destination *io.ByteBuffer) {
-	/***
-	  int startIdx = destination.writerIndex();
-	  ByteBufOutputStream bout = new ByteBufOutputStream(destination);
-	  bout.writeInt(msg.getType().getCode());
-	  bout.write(LENGTH_PLACEHOLDER);
-	  msg.writeFields(bout);
-	  bout.flush();
-	  bout.close();
-	  int endIdx = destination.writerIndex();
-	  int fieldsSize = endIdx - startIdx - TYPE_PLUS_LENGTH_SIZE;
-	  destination.setInt(startIdx + TYPE_SIZE, fieldsSize);
-	  return endIdx - startIdx;
-	*/
-	startIdx := destination.Buffered()
-	destination.WriteInt32(msg.GetType().Code)
-	destination.Write(LengthPlaceholder)
-	msg.WriteFields(destination)
-	endIdx := destination.Buffered()
-	fieldsSize := int32(endIdx - startIdx - TypePlusLengthSize)
-
-	destination.WriteAt(startIdx+TypeSize, io.Int32toBytes(fieldsSize))
-
+func (encoder *CommandEncoder) reset() {
+	encoder.Buffer.Reset()
 }
-func (encoder *CommandEncoder) Write(command protocal.WireCommand) *io.ByteBuffer {
-	WriteMessage(command, encoder.buffer)
-	return encoder.buffer
 
+func (encoder *CommandEncoder) EncodeCommand(command protocal.WireCommand) *io.ByteBuffer {
+	startIdx := encoder.Buffer.Buffered()
+	encoder.Buffer.WriteInt32(command.GetType().Code)
+	encoder.Buffer.Write(LengthPlaceholder)
+	command.WriteFields(encoder.Buffer)
+	endIdx := encoder.Buffer.Buffered()
+	fieldsSize := int32(endIdx - startIdx - TypePlusLengthSize)
+	encoder.Buffer.WriteAt(startIdx+TypeSize, io.Int32toBytes(fieldsSize))
+	return encoder.Buffer
+}
+
+func (encoder *CommandEncoder) WriteIntAt(position int, value int32) error {
+	return encoder.Buffer.WriteAt(position, io.Int32toBytes(value))
+}
+func (encoder *CommandEncoder) EncodeAppendBlock(appendBlock *protocal.AppendBlock) *io.ByteBuffer {
+	encoder.Buffer.WriteInt32(appendBlock.GetType().Code)
+	encoder.Buffer.Write(LengthPlaceholder)
+	appendBlock.WriteFields(encoder.Buffer)
+	return encoder.Buffer
+}
+
+func (encoder *CommandEncoder) EncodeEvent(event []byte) error {
+	_, err := encoder.Buffer.Write(event)
+	if err != nil {
+		return err
+	}
+	return nil
 }

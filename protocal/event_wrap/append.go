@@ -2,10 +2,11 @@ package event_wrap
 
 import (
 	"github.com/google/uuid"
+	types "io.pravega.pravega-client-go/controller/proto"
 )
 
 type Append struct {
-	Segment        string
+	Segment        *types.SegmentId
 	WriterId       uuid.UUID
 	EventNumber    int64
 	EventCount     int64
@@ -14,7 +15,7 @@ type Append struct {
 	FlowId         int64
 }
 
-func NewAppend(segment string, writeId uuid.UUID, eventNumber int64, data []byte, flowId int64) *Append {
+func NewAppend(segment *types.SegmentId, writeId uuid.UUID, eventNumber int64, data []byte, flowId int64) *Append {
 
 	return &Append{
 		Segment:        segment,

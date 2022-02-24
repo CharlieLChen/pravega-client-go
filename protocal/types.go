@@ -20,6 +20,10 @@ func NewWireCommandType(code int32, factory Constructor) *WireCommandType {
 }
 
 var (
-	WirecommandtypeHello = NewWireCommandType(-127, HelloConstructor{})
-	WirecommandtypeEvent = NewWireCommandType(0, nil)
+	WirecommandtypeHello          = NewWireCommandType(-127, HelloConstructor{})
+	WirecommandtypeEvent          = NewWireCommandType(0, nil)
+	WirecommandtypeSetupAppend    = NewWireCommandType(1, nil)
+	WirecommandtypeAppendSetup    = NewWireCommandType(2, AppendSetupConstructor{})
+	WirecommandtypeAppendBlock    = NewWireCommandType(3, nil)
+	WirecommandtypeAppendBlockEnd = NewWireCommandType(4, nil)
 )

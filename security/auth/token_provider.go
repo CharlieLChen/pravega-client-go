@@ -1,19 +1,19 @@
 package auth
 
 type DelegationTokenProvider interface {
-	retrieveToken() string
-	populateToken(token string) bool
-	signalTokenExpired()
+	RetrieveToken() string
+	PopulateToken(token string) bool
+	SignalTokenExpired()
 }
 type EmptyDelegationTokenProvider struct {
 }
 
-func (provider *EmptyDelegationTokenProvider) retrieveToken() string {
+func (provider *EmptyDelegationTokenProvider) RetrieveToken() string {
 	return ""
 }
-func (provider *EmptyDelegationTokenProvider) populateToken(token string) bool {
+func (provider *EmptyDelegationTokenProvider) PopulateToken(token string) bool {
 	return false
 }
-func (provider *EmptyDelegationTokenProvider) signalTokenExpired() {
+func (provider *EmptyDelegationTokenProvider) SignalTokenExpired() {
 
 }

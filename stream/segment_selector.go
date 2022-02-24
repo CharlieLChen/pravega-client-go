@@ -1,26 +1,60 @@
 package stream
 
 import (
-	"io.pravega.pravega-client-go/controller-client"
-	types "io.pravega.pravega-client-go/controller-client/proto"
-	"math/rand"
+	"hash/maphash"
+	"io.pravega.pravega-client-go/controller"
+	types "io.pravega.pravega-client-go/controller/proto"
+	"io.pravega.pravega-client-go/segment"
 )
 
 type SegmentSelector struct {
-	controllerImp controller.Controller
+	scope         string
 	stream        string
+	controllerImp controller.Controller
 	segmentIds    []types.SegmentId
+	writers       map[int]*segment.SegmentOutputStream
+	hasher        *maphash.Hash
 }
 
-func (selector *SegmentSelector) chooseSegment(scope, stream string) (*types.SegmentId, error) {
+func NewSegmentSelector(scope, stream string, controllerImp controller.Controller) *SegmentSelector {
+	hasher := new(maphash.Hash)
+	m := map[int]*segment.SegmentOutputStream{}
+	return &SegmentSelector{
+		scope:   scope,
+		stream:  stream,
+		hasher:  hasher,
+		writers: m,
+	}
+}
+func (selector *SegmentSelector) chooseSegmentWriter(routineKey string) (*segment.SegmentOutputStream, error) {
+	_, err := selector.hasher.WriteString(routineKey)
+	if err != nil {
+		return nil, err
+	}
+	sum64 := selector.hasher.Sum64()
+	selector.hasher.Reset()
 	if selector.segmentIds == nil {
-
-		segments, err := selector.controllerImp.GetCurrentSegments(scope, stream)
+		err := selector.refreshSegments()
 		if err != nil {
 			return nil, err
 		}
-		selector.segmentIds = segments
 	}
-	i := rand.Int() % len(selector.segmentIds)
-	return &selector.segmentIds[i], nil
+	length := uint64(len(selector.segmentIds))
+	i := int(sum64 / length)
+	stream, ok := selector.writers[i]
+	if ok {
+		return stream, nil
+	} else {
+		selector.writers[i] = segment.NewSegmentOutputStream(&selector.segmentIds[i], selector.controllerImp)
+		return selector.writers[i], nil
+	}
+
+}
+func (selector *SegmentSelector) refreshSegments() error {
+	segments, err := selector.controllerImp.GetCurrentSegments(selector.scope, selector.stream)
+	if err != nil {
+		return err
+	}
+	selector.segmentIds = segments
+	return nil
 }
