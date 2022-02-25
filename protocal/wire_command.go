@@ -59,11 +59,12 @@ func (event *Event) WriteFields(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, len(event.Data))
+	length := len(event.Data)
+	err = io2.Write(out, int32(length))
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, event.Data)
+	_, err = out.Write(event.Data)
 	if err != nil {
 		return err
 	}
@@ -183,7 +184,7 @@ type AppendBlockEnd struct {
 	Type              *WireCommandType
 	WriterId          uuid.UUID
 	SizeOfWholeEvents int32
-	PartialData       byte[]
+	PartialData       []byte
 	NumEvents         int32
 	LastEventNumber   int64
 	RequestId         int64
@@ -200,7 +201,7 @@ func NewAppendBlockEnd(writerId uuid.UUID, sizeOfWholeEvents int32, numEvents in
 }
 
 func (appendBlockEnd *AppendBlockEnd) GetType() *WireCommandType {
-	return WirecommandtypeAppendBlock
+	return WirecommandtypeAppendBlockEnd
 }
 
 func (appendBlockEnd *AppendBlockEnd) WriteFields(out io.Writer) error {
@@ -216,7 +217,7 @@ func (appendBlockEnd *AppendBlockEnd) WriteFields(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, 0) //never has partial data
+	err = io2.Write(out, int32(0)) //never has partial data
 	if err != nil {
 		return err
 	}

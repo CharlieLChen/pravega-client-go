@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	types "io.pravega.pravega-client-go/controller/proto"
@@ -43,4 +44,25 @@ func (controller *Controller) GetSegmentStoreURI(segmentId *types.SegmentId) (*t
 		return nil, err
 	}
 	return nodeUri, nil
+}
+
+func (controller *Controller) CreateScope(scope string) error {
+	createScopeStatus, err := controller.controllerClient.CreateScope(controller.ctx, &types.ScopeInfo{Scope: scope})
+	if err != nil {
+		return err
+	}
+	if createScopeStatus.Status == types.CreateScopeStatus_SUCCESS || createScopeStatus.Status == types.CreateScopeStatus_SCOPE_EXISTS {
+		return nil
+	}
+	return fmt.Errorf("creating scope error code %v", createScopeStatus.Status)
+}
+func (controller *Controller) CreateStream(streamConfig *types.StreamConfig) error {
+	createStreamStatus, err := controller.controllerClient.CreateStream(controller.ctx, streamConfig)
+	if err != nil {
+		return err
+	}
+	if createStreamStatus.Status == types.CreateStreamStatus_SUCCESS || createStreamStatus.Status == types.CreateStreamStatus_STREAM_EXISTS {
+		return nil
+	}
+	return fmt.Errorf("creating stream error code %v", createStreamStatus.Status)
 }

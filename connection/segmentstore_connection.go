@@ -20,10 +20,12 @@ type SegmentStoreHandler struct {
 	eventCountPerBatch  int
 }
 
-func NewSegmentStoreHandler(address string, port int32) (*SegmentStoreHandler, error) {
+func NewSegmentStoreHandler(address string, port int32, writeId uuid.UUID, requestId int64) (*SegmentStoreHandler, error) {
 	handler := &SegmentStoreHandler{
-		address: address,
-		port:    port,
+		address:   address,
+		port:      port,
+		writeId:   writeId,
+		requestId: requestId,
 	}
 	url := fmt.Sprintf("%s:%v", address, port)
 	con, err := net.Dial("tcp", url)
@@ -32,6 +34,7 @@ func NewSegmentStoreHandler(address string, port int32) (*SegmentStoreHandler, e
 	}
 	handler.connection = con.(*net.TCPConn)
 	handler.encoder = NewCommandEncoder()
+	handler.reset()
 	return handler, nil
 }
 func (handler *SegmentStoreHandler) SendCommand(cmd protocal.WireCommand) error {
@@ -46,7 +49,7 @@ func (handler *SegmentStoreHandler) SendCommand(cmd protocal.WireCommand) error 
 }
 
 func getBlockSize() int {
-	return 1024
+	return 0
 }
 func (handler *SegmentStoreHandler) reset() {
 	handler.encoder.reset()
@@ -79,12 +82,15 @@ func (handler *SegmentStoreHandler) SendAppend(append *event_wrap.Append) error 
 
 	if (suggestedBlockSize - bufferedDataSize) <= 0 {
 		end := protocal.NewAppendBlockEnd(handler.writeId, int32(bufferedDataSize), int32(handler.eventCountPerBatch), append.EventNumber, handler.requestId)
+		fmt.Printf("writerId: %v", end.WriterId.String())
 		buffer := handler.encoder.EncodeCommand(end)
-		err = handler.encoder.WriteIntAt(handler.appendStartPosition+TypeSize, int32(bufferedDataSize))
+		err = handler.encoder.WriteIntAt(handler.appendStartPosition+TypeSize, int32(bufferedDataSize+overhead-TypePlusLengthSize))
 		if err != nil {
 			return err
 		}
-		_, err := handler.connection.Write(buffer.Data())
+		data := buffer.Data()
+		fmt.Printf("%v\n", data)
+		_, err := handler.connection.Write(data)
 		if err != nil {
 			return err
 		}

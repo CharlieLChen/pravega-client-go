@@ -6,13 +6,11 @@ type EventStreamWriter struct {
 	streamName    string
 	scope         string
 	selector      *SegmentSelector
-	controllerImp controller.Controller
+	controllerImp *controller.Controller
 }
 
-func NewEventStreamWriter(scope, streamName string, controllerImp controller.Controller) *EventStreamWriter {
-	selector := &SegmentSelector{
-		controllerImp: controllerImp,
-	}
+func NewEventStreamWriter(scope, streamName string, controllerImp *controller.Controller) *EventStreamWriter {
+	selector := NewSegmentSelector(scope, streamName, controllerImp)
 	return &EventStreamWriter{
 		selector:      selector,
 		scope:         scope,
@@ -20,7 +18,7 @@ func NewEventStreamWriter(scope, streamName string, controllerImp controller.Con
 		controllerImp: controllerImp,
 	}
 }
-func (streamWriter *EventStreamWriter) writeEvent(event []byte, key string) error {
+func (streamWriter *EventStreamWriter) WriteEvent(event []byte, key string) error {
 	segmentWriter, err := streamWriter.selector.chooseSegmentWriter(key)
 	if err != nil {
 		return err

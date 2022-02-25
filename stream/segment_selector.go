@@ -10,20 +10,21 @@ import (
 type SegmentSelector struct {
 	scope         string
 	stream        string
-	controllerImp controller.Controller
+	controllerImp *controller.Controller
 	segmentIds    []types.SegmentId
 	writers       map[int]*segment.SegmentOutputStream
 	hasher        *maphash.Hash
 }
 
-func NewSegmentSelector(scope, stream string, controllerImp controller.Controller) *SegmentSelector {
+func NewSegmentSelector(scope, stream string, controllerImp *controller.Controller) *SegmentSelector {
 	hasher := new(maphash.Hash)
 	m := map[int]*segment.SegmentOutputStream{}
 	return &SegmentSelector{
-		scope:   scope,
-		stream:  stream,
-		hasher:  hasher,
-		writers: m,
+		scope:         scope,
+		stream:        stream,
+		hasher:        hasher,
+		controllerImp: controllerImp,
+		writers:       m,
 	}
 }
 func (selector *SegmentSelector) chooseSegmentWriter(routineKey string) (*segment.SegmentOutputStream, error) {
@@ -40,7 +41,7 @@ func (selector *SegmentSelector) chooseSegmentWriter(routineKey string) (*segmen
 		}
 	}
 	length := uint64(len(selector.segmentIds))
-	i := int(sum64 / length)
+	i := int(sum64 % length)
 	stream, ok := selector.writers[i]
 	if ok {
 		return stream, nil

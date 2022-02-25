@@ -1,6 +1,7 @@
 package segment
 
 import (
+	"fmt"
 	"github.com/google/uuid"
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
@@ -9,11 +10,12 @@ import (
 	"io.pravega.pravega-client-go/protocal/event_wrap"
 	"io.pravega.pravega-client-go/security/auth"
 	"io.pravega.pravega-client-go/util"
+	"time"
 )
 
 type SegmentOutputStream struct {
 	segmentId     *v1.SegmentId
-	controller    controller.Controller
+	controller    *controller.Controller
 	writerId      uuid.UUID
 	tokenProvider *auth.EmptyDelegationTokenProvider
 	requestId     int64
@@ -25,8 +27,9 @@ type SegmentOutputStreamState struct {
 	connection  *connection.SegmentStoreHandler
 }
 
-func NewSegmentOutputStream(segmentId *v1.SegmentId, controller controller.Controller) *SegmentOutputStream {
+func NewSegmentOutputStream(segmentId *v1.SegmentId, controller *controller.Controller) *SegmentOutputStream {
 	writerId, _ := uuid.NewUUID()
+	fmt.Printf("writerId: %v, segmentId:%v", writerId.String(), segmentId.String())
 	tokenProvider := &auth.EmptyDelegationTokenProvider{}
 	requestId := connection.NewFlow().AsLong()
 	return &SegmentOutputStream{
@@ -45,7 +48,7 @@ func (segmentOutput *SegmentOutputStream) Write(data []byte) error {
 	}
 	encodedData, err := event.GetEncodedData()
 	if err != nil {
-		return nil
+		return err
 	}
 	segmentOutput.state.EventNumber = segmentOutput.state.EventNumber + 1
 	append := event_wrap.NewAppend(segmentOutput.segmentId, segmentOutput.writerId, segmentOutput.state.EventNumber, encodedData, segmentOutput.requestId)
@@ -60,6 +63,7 @@ func (segmentOutput *SegmentOutputStream) setupAppend() error {
 	if err != nil {
 		return err
 	}
+	time.Sleep(time.Second * 2)
 	return nil
 }
 func (segmentOutput *SegmentOutputStream) send(append *event_wrap.Append) error {
@@ -68,13 +72,17 @@ func (segmentOutput *SegmentOutputStream) send(append *event_wrap.Append) error 
 		if err != nil {
 			return err
 		}
-		storeConnection, err := connection.NewSegmentStoreHandler(uri.Endpoint, uri.Port)
+		storeConnection, err := connection.NewSegmentStoreHandler(uri.Endpoint, uri.Port, segmentOutput.writerId, segmentOutput.requestId)
 		if err != nil {
 			return err
 		}
 		segmentOutput.state.connection = storeConnection
-		segmentOutput.setupAppend()
+		err = segmentOutput.setupAppend()
+		if err != nil {
+			return err
+		}
 	}
+
 	err := segmentOutput.state.connection.SendAppend(append)
 	if err != nil {
 		return err

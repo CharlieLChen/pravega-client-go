@@ -18,7 +18,7 @@ func NewByteBuffer(size int) *ByteBuffer {
 	}
 }
 func (bb *ByteBuffer) Reset() {
-	bb.Reset()
+	bb.buffer.Reset()
 }
 func (bb *ByteBuffer) WriteInt32(data int32) (int, error) {
 	return bb.buffer.Write(Int32toBytes(data))
