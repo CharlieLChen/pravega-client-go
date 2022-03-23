@@ -18,8 +18,8 @@ func NewEventStreamWriter(scope, streamName string, controllerImp *controller.Co
 		controllerImp: controllerImp,
 	}
 }
-func (streamWriter *EventStreamWriter) WriteEvent(event []byte, key string) error {
-	segmentWriter, err := streamWriter.selector.chooseSegmentWriter(key)
+func (streamWriter *EventStreamWriter) WriteEvent(event []byte, routineKey string) error {
+	segmentWriter, err := streamWriter.selector.chooseSegmentWriter(routineKey)
 	if err != nil {
 		return err
 	}

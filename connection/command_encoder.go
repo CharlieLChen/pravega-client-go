@@ -9,6 +9,9 @@ const (
 	EncoderBufferSize  = 1024 * 1024
 	TypePlusLengthSize = 8
 	TypeSize           = 4
+	UnOccupied         = uint32(0)
+	Occupied           = uint32(1)
+	Failed             = uint32(10)
 )
 
 var (
@@ -24,7 +27,7 @@ func NewCommandEncoder() *CommandEncoder {
 		Buffer: io.NewByteBuffer(EncoderBufferSize),
 	}
 }
-func (encoder *CommandEncoder) reset() {
+func (encoder *CommandEncoder) Reset() {
 	encoder.Buffer.Reset()
 }
 

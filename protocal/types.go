@@ -7,6 +7,12 @@ type WireCommand interface {
 	WriteFields(out io.Writer) error
 }
 
+type Reply interface {
+	WireCommand
+	GetRequestId() int64
+	IsFailure() bool
+}
+
 type WireCommandType struct {
 	Code    int32
 	Factory Constructor

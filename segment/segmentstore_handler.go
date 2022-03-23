@@ -1,50 +1,47 @@
-package connection
+package segment
 
 import (
 	"fmt"
 	"github.com/google/uuid"
+	"io.pravega.pravega-client-go/connection"
+	v1 "io.pravega.pravega-client-go/controller/proto"
 	"io.pravega.pravega-client-go/protocal"
 	"io.pravega.pravega-client-go/protocal/event_wrap"
-	"net"
+	"io.pravega.pravega-client-go/util"
 )
 
 type SegmentStoreHandler struct {
-	address             string
-	port                int32
-	connection          *net.TCPConn
-	encoder             *CommandEncoder
+	sockets             connection.Sockets
+	encoder             *connection.CommandEncoder
 	writeId             uuid.UUID
+	segmentId           *v1.SegmentId
+	segmentName         string
 	requestId           int64
 	appendStartPosition int
 	eventStartPosition  int
 	eventCountPerBatch  int
 }
 
-func NewSegmentStoreHandler(address string, port int32, writeId uuid.UUID, requestId int64) (*SegmentStoreHandler, error) {
+func NewSegmentStoreHandler(segmentId *v1.SegmentId, writeId uuid.UUID, requestId int64, sockets connection.Sockets) *SegmentStoreHandler {
 	handler := &SegmentStoreHandler{
-		address:   address,
-		port:      port,
 		writeId:   writeId,
 		requestId: requestId,
+		sockets:   sockets,
+		segmentId: segmentId,
 	}
-	url := fmt.Sprintf("%s:%v", address, port)
-	con, err := net.Dial("tcp", url)
-	if err != nil {
-		return nil, err
-	}
-	handler.connection = con.(*net.TCPConn)
-	handler.encoder = NewCommandEncoder()
+	handler.segmentName = util.GetQualifiedStreamSegmentName(segmentId)
+	handler.encoder = connection.NewCommandEncoder()
 	handler.reset()
-	return handler, nil
+	return handler
 }
 func (handler *SegmentStoreHandler) SendCommand(cmd protocal.WireCommand) error {
-	handler.encoder.reset()
+	handler.encoder.Reset()
 	encoded := handler.encoder.EncodeCommand(cmd)
-	_, err := handler.connection.Write(encoded.Data())
+	_, err := handler.sockets.Write(handler.segmentName, encoded.Data())
 	if err != nil {
 		return err
 	}
-	handler.encoder.reset()
+	handler.encoder.Reset()
 	return nil
 }
 
@@ -52,7 +49,7 @@ func getBlockSize() int {
 	return 0
 }
 func (handler *SegmentStoreHandler) reset() {
-	handler.encoder.reset()
+	handler.encoder.Reset()
 	handler.eventCountPerBatch = 0
 	handler.appendStartPosition = -1
 	handler.eventStartPosition = -1
@@ -84,13 +81,13 @@ func (handler *SegmentStoreHandler) SendAppend(append *event_wrap.Append) error 
 		end := protocal.NewAppendBlockEnd(handler.writeId, int32(bufferedDataSize), int32(handler.eventCountPerBatch), append.EventNumber, handler.requestId)
 		fmt.Printf("writerId: %v", end.WriterId.String())
 		buffer := handler.encoder.EncodeCommand(end)
-		err = handler.encoder.WriteIntAt(handler.appendStartPosition+TypeSize, int32(bufferedDataSize+overhead-TypePlusLengthSize))
+		err = handler.encoder.WriteIntAt(handler.appendStartPosition+connection.TypeSize, int32(bufferedDataSize+overhead-connection.TypePlusLengthSize))
 		if err != nil {
 			return err
 		}
 		data := buffer.Data()
 		fmt.Printf("%v\n", data)
-		_, err := handler.connection.Write(data)
+		_, err := handler.sockets.Write(handler.segmentName, data)
 		if err != nil {
 			return err
 		}
