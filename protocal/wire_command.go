@@ -153,6 +153,14 @@ func (appendSetup *AppendSetup) WriteFields(out io.Writer) error {
 	return nil
 }
 
+func (appendSetup *AppendSetup) GetRequestId() int64 {
+	return appendSetup.RequestId
+}
+
+func (appendSetup *AppendSetup) IsFailure() bool {
+	return false
+}
+
 // ==== APPEND_BLOCK
 type AppendBlock struct {
 	Type     *WireCommandType

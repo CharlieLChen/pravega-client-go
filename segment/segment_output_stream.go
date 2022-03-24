@@ -6,10 +6,12 @@ import (
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	v1 "io.pravega.pravega-client-go/controller/proto"
+	"io.pravega.pravega-client-go/errors"
 	"io.pravega.pravega-client-go/protocal"
 	"io.pravega.pravega-client-go/protocal/event_wrap"
 	"io.pravega.pravega-client-go/security/auth"
 	"io.pravega.pravega-client-go/util"
+	"log"
 	"sync/atomic"
 )
 
@@ -24,6 +26,7 @@ type SegmentOutputStream struct {
 	handler        *SegmentStoreHandler
 	setupCompleted int32
 	response       chan protocal.Reply
+	responseClient *connection.ResponseClient
 	dispatcher     connection.ResponseDispatcher
 }
 
@@ -53,7 +56,7 @@ func NewSegmentOutputStream(segmentId *v1.SegmentId, controller *controller.Cont
 	}
 	segmentStoreHandler := NewSegmentStoreHandler(segmentOutput.segmentId, segmentOutput.writerId, segmentOutput.requestId, segmentOutput.sockets)
 	segmentOutput.handler = segmentStoreHandler
-
+	segmentOutput.responseClient = connection.NewResponseClient()
 	go segmentOutput.handleResponse()
 	return segmentOutput
 }
@@ -75,20 +78,33 @@ func (segmentOutput *SegmentOutputStream) setupAppend() error {
 	segmentName := util.GetQualifiedStreamSegmentName(segmentOutput.segmentId)
 	token := segmentOutput.tokenProvider.RetrieveToken()
 	setupAppend := protocal.NewSetupAppend(segmentOutput.requestId, segmentOutput.writerId, segmentName, token)
-	err := segmentOutput.handler.SendCommand(setupAppend)
-	if err != nil {
-		return err
+	for {
+		err := segmentOutput.handler.SendCommand(setupAppend)
+		if err != nil {
+			return err
+		}
+		res, err := segmentOutput.responseClient.GetAppendSetup(connection.WaitEndless)
+		if err != nil {
+			if err == errors.Error_Timeout {
+				return err
+			}
+			if res.IsFailure() {
+				retry, err1 := segmentOutput.handleFailure(res)
+				if err1 != nil {
+					return fmt.Errorf("can't to handle failure for %v", res.GetType())
+				}
+				if !retry {
+					return fmt.Errorf("abort to set up due to %v", res.GetType())
+				}
+				log.Printf("hitting errror: %v, retrying to setup", res.GetType())
+			}
+		}
+		//success to handle
+		return nil
 	}
-	segmentOutput.waitSetup()
+
 	return nil
 }
-
-func (segmentOutput *SegmentOutputStream) waitSetup() {
-	for atomic.LoadInt32(&segmentOutput.setupCompleted) == SetupUnCompleted {
-
-	}
-}
-
 func (segmentOutput *SegmentOutputStream) send(append *event_wrap.Append) error {
 	if atomic.LoadInt32(&segmentOutput.setupCompleted) == SetupUnCompleted {
 		err := segmentOutput.setupAppend()
@@ -104,11 +120,15 @@ func (segmentOutput *SegmentOutputStream) send(append *event_wrap.Append) error 
 	return nil
 }
 
+func (segmentOutput *SegmentOutputStream) handleFailure(response protocal.Reply) (bool, error) {
+	if !response.IsFailure() {
+		return false, nil
+	}
+	return true, nil
+}
+
 func (segmentOutput *SegmentOutputStream) handleResponse() {
 	for response := range segmentOutput.response {
-		t := response.GetType()
-		if t == protocal.WirecommandtypeAppendSetup {
-			atomic.SwapInt32(&segmentOutput.setupCompleted, SetupCompleted)
-		}
+		segmentOutput.responseClient.Offer(response)
 	}
 }

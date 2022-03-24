@@ -26,6 +26,7 @@ func NewWireCommandType(code int32, factory Constructor) *WireCommandType {
 }
 
 var (
+	TypesMapping                  = map[int32]*WireCommandType{}
 	WirecommandtypeHello          = NewWireCommandType(-127, HelloConstructor{})
 	WirecommandtypeEvent          = NewWireCommandType(0, nil)
 	WirecommandtypeSetupAppend    = NewWireCommandType(1, nil)
@@ -33,3 +34,12 @@ var (
 	WirecommandtypeAppendBlock    = NewWireCommandType(3, nil)
 	WirecommandtypeAppendBlockEnd = NewWireCommandType(4, nil)
 )
+
+func init() {
+	TypesMapping[WirecommandtypeHello.Code] = WirecommandtypeHello
+	TypesMapping[WirecommandtypeEvent.Code] = WirecommandtypeEvent
+	TypesMapping[WirecommandtypeSetupAppend.Code] = WirecommandtypeSetupAppend
+	TypesMapping[WirecommandtypeAppendSetup.Code] = WirecommandtypeAppendSetup
+	TypesMapping[WirecommandtypeAppendBlock.Code] = WirecommandtypeAppendBlock
+	TypesMapping[WirecommandtypeAppendBlockEnd.Code] = WirecommandtypeAppendBlockEnd
+}
