@@ -1,8 +1,7 @@
-package connection
+package protocol
 
 import (
 	"io.pravega.pravega-client-go/io"
-	"io.pravega.pravega-client-go/protocal"
 )
 
 const (
@@ -31,7 +30,7 @@ func (encoder *CommandEncoder) Reset() {
 	encoder.Buffer.Reset()
 }
 
-func (encoder *CommandEncoder) EncodeCommand(command protocal.WireCommand) *io.ByteBuffer {
+func (encoder *CommandEncoder) EncodeCommand(command WireCommand) *io.ByteBuffer {
 	startIdx := encoder.Buffer.Buffered()
 	encoder.Buffer.WriteInt32(command.GetType().Code)
 	encoder.Buffer.Write(LengthPlaceholder)
@@ -45,17 +44,9 @@ func (encoder *CommandEncoder) EncodeCommand(command protocal.WireCommand) *io.B
 func (encoder *CommandEncoder) WriteIntAt(position int, value int32) error {
 	return encoder.Buffer.WriteAt(position, io.Int32toBytes(value))
 }
-func (encoder *CommandEncoder) EncodeAppendBlock(appendBlock *protocal.AppendBlock) *io.ByteBuffer {
+func (encoder *CommandEncoder) EncodeAppendBlock(appendBlock *AppendBlock) *io.ByteBuffer {
 	encoder.Buffer.WriteInt32(appendBlock.GetType().Code)
 	encoder.Buffer.Write(LengthPlaceholder)
 	appendBlock.WriteFields(encoder.Buffer)
 	return encoder.Buffer
-}
-
-func (encoder *CommandEncoder) EncodeEvent(event []byte) error {
-	_, err := encoder.Buffer.Write(event)
-	if err != nil {
-		return err
-	}
-	return nil
 }

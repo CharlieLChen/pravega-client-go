@@ -5,7 +5,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"io.pravega.pravega-client-go/errors"
-	"io.pravega.pravega-client-go/protocal"
+	"io.pravega.pravega-client-go/protocol"
 	"time"
 )
 
@@ -18,7 +18,7 @@ var _ = Describe("ResponseClient Test", Label("responseClient"), func() {
 		segmentName = "fakeSegment"
 	)
 	When("Offer reply", func() {
-		appendSetup := protocal.NewAppendSetup(requestId, writerId, segmentName, 1)
+		appendSetup := protocol.NewAppendSetup(requestId, writerId, segmentName, 1)
 		Context("with appendSetup", func() {
 			go client.Offer(appendSetup)
 			It("should get it successfully", func() {

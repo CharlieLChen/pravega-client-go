@@ -1,4 +1,4 @@
-package event_wrap
+package protocol
 
 import (
 	"github.com/google/uuid"

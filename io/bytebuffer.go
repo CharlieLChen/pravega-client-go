@@ -3,6 +3,8 @@ package io
 import (
 	"bytes"
 	"fmt"
+	"github.com/google/uuid"
+	"io"
 )
 
 type ByteBuffer struct {
@@ -20,12 +22,36 @@ func NewByteBuffer(size int) *ByteBuffer {
 func (bb *ByteBuffer) Reset() {
 	bb.buffer.Reset()
 }
-func (bb *ByteBuffer) WriteInt32(data int32) (int, error) {
-	return bb.buffer.Write(Int32toBytes(data))
+
+func (bb *ByteBuffer) WriteInt32(data int32) error {
+	_, err := bb.buffer.Write(Int32toBytes(data))
+	return err
 }
 
-func (bb *ByteBuffer) Write(data []byte) (int, error) {
-	return bb.buffer.Write(data)
+func (bb *ByteBuffer) WriteInt64(data int64) error {
+	_, err := bb.buffer.Write(Int64toBytes(data))
+	return err
+}
+
+func (bb *ByteBuffer) ReadUTF(in io.Reader) (string, error) {
+	return ReadUTF(in)
+}
+
+func (bb *ByteBuffer) WriteUTF(data string) error {
+	return WriteUTF(bb.buffer, data)
+}
+
+func (bb *ByteBuffer) WriteUUid(id uuid.UUID) error {
+	binary, err := id.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	return bb.Write(binary)
+}
+
+func (bb *ByteBuffer) Write(data []byte) error {
+	_, err := bb.buffer.Write(data)
+	return err
 }
 func (bb *ByteBuffer) Buffered() int {
 	return len(bb.buffer.Bytes())

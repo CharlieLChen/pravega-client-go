@@ -1,4 +1,4 @@
-package connection
+package protocol
 
 import (
 	. "github.com/onsi/ginkgo/v2"
@@ -8,5 +8,5 @@ import (
 
 func TestConnections(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Connections Suite")
+	RunSpecs(t, "Protocol Suite")
 }

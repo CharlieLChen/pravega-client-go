@@ -3,8 +3,7 @@ package connection
 import (
 	log "github.com/sirupsen/logrus"
 	"io.pravega.pravega-client-go/errors"
-	io_util "io.pravega.pravega-client-go/io"
-	"io.pravega.pravega-client-go/protocal"
+	"io.pravega.pravega-client-go/protocol"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -27,40 +26,17 @@ type Connection struct {
 
 func (connect *Connection) release() {
 	// atomic operation is enough for memory barrier
-	atomic.SwapUint32(&connect.state, UnOccupied)
+	atomic.SwapUint32(&connect.state, protocol.UnOccupied)
 }
 
 func (connect *Connection) parseResponseInternal() {
-	typeBytes := make([]byte, 4)
-	lengthBytes := make([]byte, 4)
 	for {
-		_, err := connect.TCPConn.Read(typeBytes)
+		decode, err := protocol.Decode(connect.TCPConn)
 		if err != nil {
-			log.Errorf("Failed to read data from connection: %v", connect.url)
+			log.Printf("Failed to parse response for command %v", err)
 			connect.releaseWithFailure()
-			return
 		}
-		_, err = connect.TCPConn.Read(lengthBytes)
-		if err != nil {
-			log.Errorf("Failed to read data from connection: %v", connect.url)
-			connect.releaseWithFailure()
-			return
-		}
-		types := io_util.BytestoInt32(typeBytes)
-		length := io_util.BytestoInt32(lengthBytes)
-		data := make([]byte, length)
-		_, err = connect.TCPConn.Read(data)
-		if err != nil {
-			log.Errorf("Failed to read data from connection: %v", connect.url)
-			connect.releaseWithFailure()
-			return
-		}
-		commandType := protocal.TypesMapping[types]
-		command, err := commandType.Factory.ReadFrom(data, length)
-		if err != nil {
-			log.Printf("Failed to parse response for commandType: %v", commandType)
-		}
-		connect.dispatcher.Dispatch(command)
+		connect.dispatcher.Dispatch(decode)
 	}
 }
 func (connect *Connection) parseResponse() {
@@ -69,7 +45,7 @@ func (connect *Connection) parseResponse() {
 
 func (connect *Connection) releaseWithFailure() {
 	// atomic operation is enough for memory barrier
-	atomic.SwapUint32(&connect.state, Failed)
+	atomic.SwapUint32(&connect.state, protocol.Failed)
 }
 func NewConnectionPool(maxConnectionPerHost int) *ConnectionPool {
 	return &ConnectionPool{
@@ -81,8 +57,8 @@ func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
 	pool.lock.Lock()
 	defer pool.lock.Unlock()
 	for _, connection := range pool.connections {
-		if connection.state == UnOccupied {
-			connection.state = Occupied
+		if connection.state == protocol.UnOccupied {
+			connection.state = protocol.Occupied
 			return connection, nil
 		}
 	}
@@ -92,18 +68,18 @@ func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
 		if err != nil {
 			return nil, err
 		}
-		conn.state = Occupied
+		conn.state = protocol.Occupied
 		return conn, nil
 	}
 
 	for {
 		allFailed := true
 		for _, connection := range pool.connections {
-			if connection.state == UnOccupied {
-				connection.state = Occupied
+			if connection.state == protocol.UnOccupied {
+				connection.state = protocol.Occupied
 				return connection, nil
 			}
-			if connection.state != Failed {
+			if connection.state != protocol.Failed {
 				allFailed = false
 			}
 			if allFailed {
@@ -124,7 +100,7 @@ func (pool *ConnectionPool) createConnection(url string) (*Connection, error) {
 	TCPConn := con.(*net.TCPConn)
 	connection := &Connection{
 		TCPConn: TCPConn,
-		state:   UnOccupied,
+		state:   protocol.UnOccupied,
 	}
 	pool.connections = append(pool.connections, connection)
 	connection.index = len(pool.connections) - 1

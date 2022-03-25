@@ -2,45 +2,60 @@ package connection
 
 import (
 	"io.pravega.pravega-client-go/errors"
-	"io.pravega.pravega-client-go/protocal"
+	"io.pravega.pravega-client-go/protocol"
 	"math"
 	"time"
 )
 
 const (
-	WaitEndless = 0
+	WaitEndless = math.MaxInt64
+	Now         = 0
 )
 
 type ResponseClient struct {
-	queue chan protocal.Reply
+	queue chan protocol.Reply
 }
 
 func NewResponseClient() *ResponseClient {
-	replies := make(chan protocal.Reply, 1)
+	replies := make(chan protocol.Reply, 1)
 	return &ResponseClient{
 		queue: replies,
 	}
 }
-func (client *ResponseClient) Offer(res protocal.Reply) {
+func (client *ResponseClient) Offer(res protocol.Reply) {
 	client.queue <- res
 }
 
-func (client *ResponseClient) GetAppendSetup(timeout int64) (protocal.Reply, error) {
-	return client.getResponse(protocal.WirecommandtypeAppendSetup, timeout)
+func (client *ResponseClient) GetAppendSetup(timeout int64) (protocol.Reply, error) {
+	return client.getResponse(protocol.TypeAppendSetup, timeout)
 }
 
-func (client *ResponseClient) getResponse(ty *protocal.WireCommandType, timeout int64) (protocal.Reply, error) {
+func (client *ResponseClient) getResponse(ty *protocol.WireCommandType, timeout int64) (protocol.Reply, error) {
 	var duration time.Duration
-	if timeout <= 0 {
-		duration = (time.Duration)(math.MaxInt64)
+	var getNow = false
+	if timeout <= Now {
+		getNow = true
 	} else {
-		i := math.MaxInt64 / time.Second.Milliseconds()
+		i := (math.MaxInt64 / time.Second.Milliseconds()) / timeout
 		//overflow
-		if i <= 0 {
+		if i < 1 {
 			duration = (time.Duration)(math.MaxInt64)
 		}
 		duration = (time.Duration)(time.Second.Milliseconds() * timeout)
 	}
+	// nonblock
+	if getNow {
+		select {
+		case res := <-client.queue:
+			if res.GetType() != ty && res.IsFailure() {
+				return res, errors.Error_Failure
+			}
+			return res, nil
+		default:
+			return nil, nil
+		}
+	}
+	// block
 	select {
 	case res := <-client.queue:
 		if res.GetType() != ty && res.IsFailure() {

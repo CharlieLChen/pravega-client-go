@@ -1,10 +1,8 @@
-package protocal
+package protocol
 
 import (
-	"bytes"
 	"github.com/google/uuid"
-	"io"
-	io2 "io.pravega.pravega-client-go/io"
+	io_util "io.pravega.pravega-client-go/io"
 )
 
 type Hello struct {
@@ -15,26 +13,18 @@ type Hello struct {
 
 func NewHello(highVersion, lowVersion int32) *Hello {
 	return &Hello{
-		Type:        WirecommandtypeHello,
+		Type:        TypeHello,
 		HighVersion: highVersion,
 		LowVersion:  lowVersion,
 	}
 }
 
 func (hello *Hello) GetType() *WireCommandType {
-	return WirecommandtypeHello
+	return TypeHello
 }
 
-func (hello *Hello) WriteFields(out io.Writer) error {
-	err := io2.Write(out, hello.HighVersion)
-	if err != nil {
-		return err
-	}
-	err = io2.Write(out, hello.LowVersion)
-	if err != nil {
-		return err
-	}
-	return nil
+func (hello *Hello) GetRequestId() int64 {
+	return 0
 }
 
 // ==== EVENT
@@ -45,26 +35,26 @@ type Event struct {
 
 func NewEvent(data []byte) *Event {
 	return &Event{
-		Type: WirecommandtypeEvent,
+		Type: TypeEvent,
 		Data: data,
 	}
 }
 
 func (event *Event) GetType() *WireCommandType {
-	return WirecommandtypeEvent
+	return TypeEvent
 }
 
-func (event *Event) WriteFields(out io.Writer) error {
-	err := io2.Write(out, WirecommandtypeEvent.Code)
+func (event *Event) WriteFields(buffer *io_util.ByteBuffer) error {
+	err := buffer.WriteInt32(TypeEvent.Code)
 	if err != nil {
 		return err
 	}
 	length := len(event.Data)
-	err = io2.Write(out, int32(length))
+	err = buffer.WriteInt32(int32(length))
 	if err != nil {
 		return err
 	}
-	_, err = out.Write(event.Data)
+	err = buffer.Write(event.Data)
 	if err != nil {
 		return err
 	}
@@ -72,12 +62,12 @@ func (event *Event) WriteFields(out io.Writer) error {
 }
 
 func (event *Event) GetEncodedData() ([]byte, error) {
-	buffer := &bytes.Buffer{}
+	buffer := io_util.NewByteBuffer(0)
 	err := event.WriteFields(buffer)
 	if err != nil {
 		return nil, err
 	}
-	return buffer.Bytes(), nil
+	return buffer.Data(), nil
 }
 
 // ==== SetupAppend
@@ -91,7 +81,7 @@ type SetupAppend struct {
 
 func NewSetupAppend(requestId int64, writerId uuid.UUID, segment string, delegationToken string) *SetupAppend {
 	return &SetupAppend{
-		Type:            WirecommandtypeSetupAppend,
+		Type:            TypeSetupAppend,
 		RequestId:       requestId,
 		WriterId:        writerId,
 		Segment:         segment,
@@ -99,11 +89,11 @@ func NewSetupAppend(requestId int64, writerId uuid.UUID, segment string, delegat
 	}
 }
 func (event *SetupAppend) GetType() *WireCommandType {
-	return WirecommandtypeSetupAppend
+	return TypeSetupAppend
 }
 
-func (setup *SetupAppend) WriteFields(out io.Writer) error {
-	err := io2.Write(out, setup.RequestId)
+func (setup *SetupAppend) WriteFields(buffer *io_util.ByteBuffer) error {
+	err := buffer.WriteInt64(setup.RequestId)
 	if err != nil {
 		return err
 	}
@@ -111,15 +101,15 @@ func (setup *SetupAppend) WriteFields(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, binary)
+	err = buffer.Write(binary)
 	if err != nil {
 		return err
 	}
-	err = io2.WriteUTF(out, setup.Segment)
+	err = buffer.WriteUTF(setup.Segment)
 	if err != nil {
 		return err
 	}
-	err = io2.WriteUTF(out, setup.DelegationToken)
+	err = buffer.WriteUTF(setup.DelegationToken)
 	if err != nil {
 		return err
 	}
@@ -137,7 +127,7 @@ type AppendSetup struct {
 
 func NewAppendSetup(requestId int64, writerId uuid.UUID, segment string, lastEventNumber int64) *AppendSetup {
 	return &AppendSetup{
-		Type:            WirecommandtypeAppendSetup,
+		Type:            TypeAppendSetup,
 		RequestId:       requestId,
 		WriterId:        writerId,
 		Segment:         segment,
@@ -145,12 +135,7 @@ func NewAppendSetup(requestId int64, writerId uuid.UUID, segment string, lastEve
 	}
 }
 func (appendSetup *AppendSetup) GetType() *WireCommandType {
-	return WirecommandtypeAppendSetup
-}
-
-func (appendSetup *AppendSetup) WriteFields(out io.Writer) error {
-	// No need for client for now
-	return nil
+	return TypeAppendSetup
 }
 
 func (appendSetup *AppendSetup) GetRequestId() int64 {
@@ -173,15 +158,15 @@ func NewAppendBlock(writerId uuid.UUID) *AppendBlock {
 	}
 }
 func (appendBlock *AppendBlock) GetType() *WireCommandType {
-	return WirecommandtypeAppendBlock
+	return TypeAppendBlock
 }
 
-func (appendBlock *AppendBlock) WriteFields(out io.Writer) error {
+func (appendBlock *AppendBlock) WriteFields(buffer *io_util.ByteBuffer) error {
 	binary, err := appendBlock.WriterId.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	_, err = out.Write(binary)
+	err = buffer.Write(binary)
 	if err != nil {
 		return err
 	}
@@ -209,35 +194,31 @@ func NewAppendBlockEnd(writerId uuid.UUID, sizeOfWholeEvents int32, numEvents in
 }
 
 func (appendBlockEnd *AppendBlockEnd) GetType() *WireCommandType {
-	return WirecommandtypeAppendBlockEnd
+	return TypeAppendBlockEnd
 }
 
-func (appendBlockEnd *AppendBlockEnd) WriteFields(out io.Writer) error {
-	binary, err := appendBlockEnd.WriterId.MarshalBinary()
+func (appendBlockEnd *AppendBlockEnd) WriteFields(buffer *io_util.ByteBuffer) error {
+	err := buffer.WriteUUid(appendBlockEnd.WriterId)
 	if err != nil {
 		return err
 	}
-	_, err = out.Write(binary)
+	err = buffer.WriteInt32(appendBlockEnd.SizeOfWholeEvents)
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, appendBlockEnd.SizeOfWholeEvents)
+	err = buffer.WriteInt32(int32(0)) //never has partial data
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, int32(0)) //never has partial data
+	err = buffer.WriteInt32(appendBlockEnd.NumEvents)
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, appendBlockEnd.NumEvents)
+	err = buffer.WriteInt64(appendBlockEnd.LastEventNumber)
 	if err != nil {
 		return err
 	}
-	err = io2.Write(out, appendBlockEnd.LastEventNumber)
-	if err != nil {
-		return err
-	}
-	err = io2.Write(out, appendBlockEnd.RequestId)
+	err = buffer.WriteInt64(appendBlockEnd.RequestId)
 	if err != nil {
 		return err
 	}
