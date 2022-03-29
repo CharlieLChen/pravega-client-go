@@ -8,11 +8,6 @@ import (
 
 // ==== ConditionalAppend
 type ConditionalCheckFailed struct {
-	/**
-	  final UUID writerId;
-	  final long eventNumber;
-	  final long requestId;
-	*/
 	Type        *WireCommandType
 	WriterId    uuid.UUID
 	EventNumber int64
@@ -46,6 +41,14 @@ func (conditionalCheckFailed *ConditionalCheckFailed) WriteFields(buffer *io_uti
 		return err
 	}
 	return nil
+}
+
+func (conditionalCheckFailed *ConditionalCheckFailed) GetRequestId() int64 {
+	return conditionalCheckFailed.RequestId
+}
+
+func (conditionalCheckFailed *ConditionalCheckFailed) IsFailure() bool {
+	return true
 }
 
 type ConditionalConditionalCheckFailed struct {

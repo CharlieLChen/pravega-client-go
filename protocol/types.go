@@ -48,15 +48,15 @@ var (
 	TypeReadSegment            = NewWireCommandType(9, &ReadSegmentConstructor{})
 	TypeSegmentRead            = NewWireCommandType(10, &SegmentReadConstructor{})
 
-	TypeWrongHost            = NewWireCommandType(50, nil)
-	TypeSegmentSealed        = NewWireCommandType(51, nil)
-	TypeSegmentExists        = NewWireCommandType(52, nil)
-	TypeNoSuchSegment        = NewWireCommandType(53, nil)
-	TypeInvalidEventNumber   = NewWireCommandType(55, nil)
-	TypeSegmentTruncated     = NewWireCommandType(56, nil)
-	TypeOperationUnsupported = NewWireCommandType(57, nil)
+	TypeWrongHost            = NewWireCommandType(50, &WrongHostConstructor{})
+	TypeSegmentSealed        = NewWireCommandType(51, &SegmentSealedConstructor{})
+	TypeSegmentExists        = NewWireCommandType(52, &SegmentExistsConstructor{})
+	TypeNoSuchSegment        = NewWireCommandType(53, &NoSuchSegmentConstructor{})
+	TypeInvalidEventNumber   = NewWireCommandType(55, &InvalidEventNumberConstructor{})
+	TypeSegmentTruncated     = NewWireCommandType(56, &SegmentTruncatedConstructor{})
+	TypeOperationUnsupported = NewWireCommandType(57, &OperationUnsupportedConstructor{})
 
-	TypeKeepAlive = NewWireCommandType(100, nil)
+	TypeKeepAlive = NewWireCommandType(100, &KeepAliveConstructor{})
 )
 
 func init() {

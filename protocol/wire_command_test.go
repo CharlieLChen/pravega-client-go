@@ -36,6 +36,8 @@ var _ = Describe("Protocol Test", Label("Protocol"), func() {
 		currentSegmentWriteOffset = int64(1)
 		offset                    = int64(0)
 		suggestedLength           = int64(100)
+		host                      = "localhost"
+		callStack                 = "callStack"
 	)
 	When("Hello WireCommand", func() {
 		Context("encode and decode", func() {
@@ -54,6 +56,23 @@ var _ = Describe("Protocol Test", Label("Protocol"), func() {
 		})
 	})
 
+	When("KeepAlive WireCommand", func() {
+		Context("encode and decode", func() {
+			keepAlive := NewKeepAlive()
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(keepAlive)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(keepAlive.GetType()))
+
+				val := decoded.(*KeepAlive)
+				Expect(val.IsFailure()).To(BeFalse())
+			})
+		})
+	})
 	When("SetupAppend WireCommand", func() {
 		Context("encode and decode", func() {
 			setup := NewSetupAppend(requestId, writerId, segmentName, token)
@@ -217,4 +236,142 @@ var _ = Describe("Protocol Test", Label("Protocol"), func() {
 			})
 		})
 	})
+	When("WrongHost WireCommand", func() {
+		Context("encode and decode", func() {
+			wrongHost := NewWrongHost(requestId, segmentName, host, callStack)
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(wrongHost)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(wrongHost.GetType()))
+
+				val := decoded.(*WrongHost)
+				Expect(val.Segment).To(Equal(val.Segment))
+				Expect(len(val.ServerStackTrace)).To(Equal(len(val.ServerStackTrace)))
+				Expect(val.IsFailure()).To(BeTrue())
+			})
+		})
+	})
+
+	When("SegmentSealed WireCommand", func() {
+		Context("encode and decode", func() {
+			segmentSealed := NewSegmentSealed(requestId, segmentName, host, offset)
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(segmentSealed)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(segmentSealed.GetType()))
+
+				val := decoded.(*SegmentSealed)
+				Expect(val.Segment).To(Equal(val.Segment))
+				Expect(len(val.ServerStackTrace)).To(Equal(len(val.ServerStackTrace)))
+				Expect(val.IsFailure()).To(BeTrue())
+			})
+		})
+	})
+
+	When("SegmentExists WireCommand", func() {
+		Context("encode and decode", func() {
+			segmentExists := NewSegmentExists(requestId, segmentName, host)
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(segmentExists)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(segmentExists.GetType()))
+
+				val := decoded.(*SegmentExists)
+				Expect(val.Segment).To(Equal(val.Segment))
+				Expect(len(val.ServerStackTrace)).To(Equal(len(val.ServerStackTrace)))
+				Expect(val.IsFailure()).To(BeTrue())
+			})
+		})
+	})
+
+	When("NoSuchSegment WireCommand", func() {
+		Context("encode and decode", func() {
+			noSuchSegment := NewNoSuchSegment(requestId, segmentName, callStack, offset)
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(noSuchSegment)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(noSuchSegment.GetType()))
+
+				val := decoded.(*NoSuchSegment)
+				Expect(val.Segment).To(Equal(val.Segment))
+				Expect(len(val.ServerStackTrace)).To(Equal(len(val.ServerStackTrace)))
+				Expect(val.IsFailure()).To(BeTrue())
+			})
+		})
+	})
+
+	When("InvalidEventNumber WireCommand", func() {
+		Context("encode and decode", func() {
+			invalidEventNumber := NewInvalidEventNumber(writerId, eventNumber, callStack)
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(invalidEventNumber)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(invalidEventNumber.GetType()))
+
+				val := decoded.(*InvalidEventNumber)
+				Expect(len(val.ServerStackTrace)).To(Equal(len(val.ServerStackTrace)))
+				Expect(val.EventNumber).To(Equal(val.EventNumber))
+				Expect(val.IsFailure()).To(BeTrue())
+			})
+		})
+	})
+
+	When("SegmentTruncated WireCommand", func() {
+		Context("encode and decode", func() {
+			segmentTruncated := NewSegmentTruncated(requestId, segmentName)
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(segmentTruncated)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(segmentTruncated.GetType()))
+
+				val := decoded.(*SegmentTruncated)
+				Expect(val.Segment).To(Equal(val.Segment))
+				Expect(val.IsFailure()).To(BeTrue())
+			})
+		})
+	})
+
+	When("OperationUnsupported WireCommand", func() {
+		Context("encode and decode", func() {
+			operationUnsupported := NewOperationUnsupported(requestId, segmentName, callStack)
+			encoder := NewCommandEncoder()
+			encoder.EncodeCommand(operationUnsupported)
+			buffer := bytes.NewBuffer(encoder.Buffer.Data())
+			decoded, err := Decode(buffer)
+
+			It("should be equal", func() {
+				Expect(err).To(BeNil())
+				Expect(decoded.GetType()).To(Equal(operationUnsupported.GetType()))
+
+				val := decoded.(*OperationUnsupported)
+				Expect(val.OperationName).To(Equal(val.OperationName))
+				Expect(val.IsFailure()).To(BeTrue())
+			})
+		})
+	})
+
 })

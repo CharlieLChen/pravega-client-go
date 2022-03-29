@@ -63,6 +63,14 @@ func (segmentRead *SegmentRead) WriteFields(buffer *io_util.ByteBuffer) error {
 	return nil
 }
 
+func (segmentRead *SegmentRead) GetRequestId() int64 {
+	return segmentRead.RequestId
+}
+
+func (segmentRead *SegmentRead) IsFailure() bool {
+	return false
+}
+
 type SegmentReadConstructor struct {
 }
 

@@ -58,6 +58,13 @@ func (conditionalAppend *ConditionalAppend) WriteFields(buffer *io_util.ByteBuff
 	}
 	return nil
 }
+func (conditionalAppend *ConditionalAppend) GetRequestId() int64 {
+	return conditionalAppend.RequestId
+}
+
+func (conditionalAppend *ConditionalAppend) IsFailure() bool {
+	return false
+}
 
 type ConditionalAppendConstructor struct {
 }

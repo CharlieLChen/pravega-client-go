@@ -23,6 +23,10 @@ func (hello *Hello) GetType() *WireCommandType {
 	return TypeHello
 }
 
+func (hello *Hello) IsFailure() bool {
+	return false
+}
+
 func (hello *Hello) GetRequestId() int64 {
 	return 0
 }

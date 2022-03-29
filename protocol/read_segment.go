@@ -52,6 +52,13 @@ func (readSegment *ReadSegment) WriteFields(buffer *io_util.ByteBuffer) error {
 	}
 	return nil
 }
+func (readSegment *ReadSegment) GetRequestId() int64 {
+	return readSegment.RequestId
+}
+
+func (readSegment *ReadSegment) IsFailure() bool {
+	return false
+}
 
 type ReadSegmentConstructor struct {
 }
