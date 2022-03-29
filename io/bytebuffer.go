@@ -33,6 +33,11 @@ func (bb *ByteBuffer) WriteInt64(data int64) error {
 	return err
 }
 
+func (bb *ByteBuffer) WriteBool(value bool) error {
+	_, err := bb.buffer.Write(BooltoBytes(value))
+	return err
+}
+
 func (bb *ByteBuffer) ReadUTF(in io.Reader) (string, error) {
 	return ReadUTF(in)
 }

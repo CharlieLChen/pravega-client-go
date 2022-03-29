@@ -35,6 +35,23 @@ func Int64toBytes(value int64) []byte {
 	return bs
 }
 
+func BooltoBytes(value bool) []byte {
+	bs := make([]byte, 1)
+	if value {
+		bs[0] = 1
+	} else {
+		bs[0] = 0
+	}
+
+	return bs
+}
+func BytestoBool(data []byte) bool {
+	if data[0] >= 1 {
+		return true
+	}
+	return false
+}
+
 func ReadInt32(in io.Reader) (int32, error) {
 	var value int32
 	err := Read(in, &value)
@@ -51,6 +68,15 @@ func ReadInt64(in io.Reader) (int64, error) {
 		return 0, err
 	}
 	return value, nil
+}
+
+func ReadBool(in io.Reader) (bool, error) {
+	bs := make([]byte, 1)
+	_, err := in.Read(bs)
+	if err != nil {
+		return false, err
+	}
+	return BytestoBool(bs), nil
 }
 
 func ReadUUid(in io.Reader) (*uuid.UUID, error) {

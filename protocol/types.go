@@ -25,10 +25,10 @@ type WireCommandType struct {
 	Factory Constructor
 }
 
-func NewWireCommandType(code int32, factory Constructor) *WireCommandType {
+func NewWireCommandType(code int32, readFrom Constructor) *WireCommandType {
 	return &WireCommandType{
 		Code:    code,
-		Factory: factory,
+		Factory: readFrom,
 	}
 }
 
@@ -36,17 +36,17 @@ var (
 	TypesMapping = map[int32]*WireCommandType{}
 	// Start to define
 
-	TypeHello                  = NewWireCommandType(-127, HelloConstructor{})
-	TypeEvent                  = NewWireCommandType(0, nil)
-	TypeSetupAppend            = NewWireCommandType(1, nil)
-	TypeAppendSetup            = NewWireCommandType(2, AppendSetupConstructor{})
-	TypeAppendBlock            = NewWireCommandType(3, nil)
-	TypeAppendBlockEnd         = NewWireCommandType(4, nil)
-	TypeConditionalAppend      = NewWireCommandType(5, nil)
-	TypeDataAppended           = NewWireCommandType(7, nil)
-	TypeConditionalCheckFailed = NewWireCommandType(8, nil)
-	TypeReadSegment            = NewWireCommandType(9, nil)
-	TypeSegmentRead            = NewWireCommandType(10, nil)
+	TypeHello                  = NewWireCommandType(-127, &HelloConstructor{})
+	TypeEvent                  = NewWireCommandType(0, &EventConstructor{})
+	TypeSetupAppend            = NewWireCommandType(1, &SetupAppendConstructor{})
+	TypeAppendSetup            = NewWireCommandType(2, &AppendSetupConstructor{})
+	TypeAppendBlock            = NewWireCommandType(3, &AppendBlockConstructor{})
+	TypeAppendBlockEnd         = NewWireCommandType(4, &AppendBlockEndConstructor{})
+	TypeConditionalAppend      = NewWireCommandType(5, &ConditionalAppendConstructor{})
+	TypeDataAppended           = NewWireCommandType(7, &DataAppendedConstructor{})
+	TypeConditionalCheckFailed = NewWireCommandType(8, &ConditionalConditionalCheckFailed{})
+	TypeReadSegment            = NewWireCommandType(9, &ReadSegmentConstructor{})
+	TypeSegmentRead            = NewWireCommandType(10, &SegmentReadConstructor{})
 
 	TypeWrongHost            = NewWireCommandType(50, nil)
 	TypeSegmentSealed        = NewWireCommandType(51, nil)

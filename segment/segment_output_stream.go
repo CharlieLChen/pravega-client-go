@@ -25,6 +25,7 @@ type SegmentOutputStream struct {
 	handler        *SegmentStoreHandler
 	setupCompleted int32
 	response       chan protocol.Reply
+	request        chan []byte
 	responseClient *connection.ResponseClient
 	dispatcher     connection.ResponseDispatcher
 	inflight       *util.FIFOList
@@ -58,6 +59,7 @@ func NewSegmentOutputStream(segmentId *v1.SegmentId, controller *controller.Cont
 	segmentStoreHandler := NewSegmentStoreHandler(segmentOutput.segmentId, segmentOutput.writerId, segmentOutput.requestId, segmentOutput.sockets)
 	segmentOutput.handler = segmentStoreHandler
 	segmentOutput.responseClient = connection.NewResponseClient()
+	go segmentOutput.start()
 	go segmentOutput.receiveResponse()
 	return segmentOutput
 }
@@ -96,13 +98,13 @@ func (segmentOutput *SegmentOutputStream) setupAppend() error {
 		}
 		res, err := segmentOutput.responseClient.GetAppendSetup(connection.WaitEndless)
 		if err != nil {
-			// never hit this error if wait forever
+			// never hit this error as wait forever
 			if err == errors.Error_Timeout {
 				return err
 			}
 
 			if res.IsFailure() {
-				retry, err1 := segmentOutput.handleFailure(res)
+				retry, err1 := segmentOutput.handleFailureResponse(res)
 				if err1 != nil {
 					return fmt.Errorf("can't to handle failure for %v", res)
 				}
@@ -147,7 +149,7 @@ func (segmentOutput *SegmentOutputStream) send(append *protocol.Append) error {
 	return nil
 }
 
-func (segmentOutput *SegmentOutputStream) handleFailure(response protocol.Reply) (bool, error) {
+func (segmentOutput *SegmentOutputStream) handleFailureResponse(response protocol.Reply) (bool, error) {
 
 	return true, nil
 }
@@ -155,5 +157,39 @@ func (segmentOutput *SegmentOutputStream) handleFailure(response protocol.Reply)
 func (segmentOutput *SegmentOutputStream) receiveResponse() {
 	for response := range segmentOutput.response {
 		segmentOutput.responseClient.Offer(response)
+	}
+}
+
+func (segmentOutput *SegmentOutputStream) start() {
+	for true {
+		// unblock
+		response, _ := segmentOutput.responseClient.GetResponse(nil, connection.Now)
+		if response != nil {
+			if response.GetType() == protocol.TypeAppendSetup {
+				log.Warning("received the overdue response: %v, ignore it", response)
+			}
+			if response.IsFailure() {
+				segmentOutput.handleFailureResponse(response)
+			}
+			if response.GetType() == protocol.TypeDataAppended {
+
+			}
+			continue
+		}
+		select {
+		case data, ok := <-segmentOutput.request:
+			if !ok {
+				// channel closed
+			}
+			err := segmentOutput.Write(data)
+			if err != nil {
+				//do resend
+
+			}
+			break
+		default:
+			// flush if necessary
+			break
+		}
 	}
 }

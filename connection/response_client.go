@@ -27,10 +27,10 @@ func (client *ResponseClient) Offer(res protocol.Reply) {
 }
 
 func (client *ResponseClient) GetAppendSetup(timeout int64) (protocol.Reply, error) {
-	return client.getResponse(protocol.TypeAppendSetup, timeout)
+	return client.GetResponse(protocol.TypeAppendSetup, timeout)
 }
 
-func (client *ResponseClient) getResponse(ty *protocol.WireCommandType, timeout int64) (protocol.Reply, error) {
+func (client *ResponseClient) GetResponse(ty *protocol.WireCommandType, timeout int64) (protocol.Reply, error) {
 	var duration time.Duration
 	var getNow = false
 	if timeout <= Now {
@@ -47,7 +47,7 @@ func (client *ResponseClient) getResponse(ty *protocol.WireCommandType, timeout 
 	if getNow {
 		select {
 		case res := <-client.queue:
-			if res.GetType() != ty && res.IsFailure() {
+			if ty != nil && res.GetType() != ty && res.IsFailure() {
 				return res, errors.Error_Failure
 			}
 			return res, nil
@@ -58,7 +58,7 @@ func (client *ResponseClient) getResponse(ty *protocol.WireCommandType, timeout 
 	// block
 	select {
 	case res := <-client.queue:
-		if res.GetType() != ty && res.IsFailure() {
+		if ty != nil && res.GetType() != ty && res.IsFailure() {
 			return res, errors.Error_Failure
 		}
 		return res, nil
