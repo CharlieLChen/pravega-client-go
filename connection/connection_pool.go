@@ -136,10 +136,9 @@ func (pool *ConnectionPool) createConnection(url string) (*Connection, error) {
 	}
 
 	connection := &Connection{
-		TCPConn:    TCPConn,
-		state:      UnOccupied,
-		dispatcher: pool.dispatcher,
-		url:        url,
+		TCPConn: TCPConn,
+		state:   UnOccupied,
+		url:     url,
 	}
 	pool.connections = append(pool.connections, connection)
 	connection.index = len(pool.connections) - 1

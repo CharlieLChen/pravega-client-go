@@ -94,7 +94,9 @@ func (sockets *Sockets) Write(segmentName string, data []byte) (protocol.Reply, 
 			}
 
 			connection.releaseWithFailure()
+			return nil, err
 		}
+		connection.release()
 		//successfully
 		return response, nil
 	}

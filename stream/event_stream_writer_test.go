@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"fmt"
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	types "io.pravega.pravega-client-go/controller/proto"
@@ -9,7 +10,10 @@ import (
 )
 
 func TestEventStreamWriter_WriteEvent(t *testing.T) {
-	data := []byte("hello world")
+	data := make([]byte, 1024*1024)
+	for i := range data {
+		data[i] = 'a'
+	}
 	newController, err := controller.NewController("localhost:9090")
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -34,7 +38,14 @@ func TestEventStreamWriter_WriteEvent(t *testing.T) {
 
 	sockets := connection.NewSockets(newController)
 	streamWriter1 := NewEventStreamWriter("dell", "test", newController, sockets)
-	err = streamWriter1.WriteEvent(data, "hello")
+	timestamps := time.Now()
+	num := 200
+	for i := 0; i < num; i++ {
+		streamWriter1.WriteEvent(data, "hello")
+	}
+	milliseconds := time.Now().Sub(timestamps).Milliseconds()
+	fmt.Printf("cost time: %d milliseconds\n", milliseconds)
+	fmt.Printf("each event: %f milliseconds\n", float64(milliseconds)/float64(num))
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
