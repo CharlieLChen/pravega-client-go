@@ -12,17 +12,29 @@ type ResponseDispatcher struct {
 	lock     sync.RWMutex
 }
 
-func (dispatcher *ResponseDispatcher) RegisterClient(requestId int64, response chan protocol.Reply) {
+func NewResponseDispatcher() *ResponseDispatcher {
+	return &ResponseDispatcher{
+		channels: map[int64]chan protocol.Reply{},
+	}
+}
+func (dispatcher *ResponseDispatcher) Register(requestId int64, response chan protocol.Reply) {
 	dispatcher.lock.Lock()
 	defer dispatcher.lock.Unlock()
 	dispatcher.channels[requestId] = response
 }
+
+func (dispatcher *ResponseDispatcher) Unregister(requestId int64) {
+	dispatcher.lock.Lock()
+	defer dispatcher.lock.Unlock()
+	delete(dispatcher.channels, requestId)
+}
+
 func (dispatcher *ResponseDispatcher) Dispatch(command protocol.WireCommand) {
 	if command.GetType() == protocol.TypeHello {
 		response.Hello(command.(*protocol.Hello))
 	}
 	if command.GetType() == protocol.TypeKeepAlive {
-		response.Hello(command.(*protocol.Hello))
+		response.KeepAlive(command.(*protocol.KeepAlive))
 	}
 
 	res, ok := command.(protocol.Reply)

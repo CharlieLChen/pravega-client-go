@@ -2,9 +2,10 @@ package connection
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io.pravega.pravega-client-go/controller"
+	"io.pravega.pravega-client-go/protocol"
 	"io.pravega.pravega-client-go/util"
-	"log"
 	"sync"
 )
 
@@ -13,13 +14,14 @@ type Sockets struct {
 	pools              map[string]*ConnectionPool
 	segmentNameMapping map[string]string
 	rwLock             sync.RWMutex
-	controller         *controller.Controller
+	controller         controller.Controller
 }
 
-func NewSockets() *Sockets {
+func NewSockets(controller controller.Controller) *Sockets {
 	return &Sockets{
 		pools:              map[string]*ConnectionPool{},
 		segmentNameMapping: map[string]string{},
+		controller:         controller,
 	}
 }
 
@@ -31,7 +33,7 @@ func (sockets *Sockets) getSegmentStoreUrl(segmentName string) (string, error) {
 		sockets.rwLock.Lock()
 		defer sockets.rwLock.Unlock()
 		url, ok := sockets.segmentNameMapping[segmentName]
-		if ok {
+		if !ok {
 			id, err := util.SegmentNameToId(segmentName)
 			if err != nil {
 				return "", err
@@ -48,7 +50,7 @@ func (sockets *Sockets) getSegmentStoreUrl(segmentName string) (string, error) {
 	return url, nil
 }
 
-func (sockets *Sockets) refreshMappingFor(segmentName, original string) (string, error) {
+func (sockets *Sockets) RefreshMappingFor(segmentName, original string) (string, error) {
 	id, err := util.SegmentNameToId(segmentName)
 	if err != nil {
 		return "", err
@@ -69,34 +71,32 @@ func (sockets *Sockets) refreshMappingFor(segmentName, original string) (string,
 	return newUri, nil
 }
 
-func (sockets *Sockets) Write(segmentName string, data []byte) (int, error) {
+func (sockets *Sockets) Write(segmentName string, data []byte) (protocol.Reply, error) {
 	url, err := sockets.getSegmentStoreUrl(segmentName)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	refreshedMapping := false
+
 	for {
 		connection, err := sockets.getConnection(url)
 		// all connection are unavailable
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		n, err := connection.TCPConn.Write(data)
+		response, err := connection.Write(data)
 
 		// the node may be down
 		if err != nil {
-			log.Println("WARNING: failed to write data, retrying with another connection")
-			if refreshedMapping == false {
-				url, err = sockets.refreshMappingFor(segmentName, url)
-				if err != nil {
-					return 0, err
-				}
-				refreshedMapping = true
+			log.Errorf("failed to write data, retrying with another connection")
+			url, err = sockets.RefreshMappingFor(segmentName, url)
+			if err != nil {
+				return nil, err
 			}
+
 			connection.releaseWithFailure()
 		}
 		//successfully
-		return n, nil
+		return response, nil
 	}
 
 }

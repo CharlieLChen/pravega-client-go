@@ -11,19 +11,6 @@ const (
 	EpochDelimiter = ".#epoch."
 )
 
-/***
-  public static String getQualifiedStreamSegmentName(String scope, String streamName, long segmentId) {
-      int segmentNumber = getSegmentNumber(segmentId);
-      int epoch = getEpoch(segmentId);
-      StringBuilder sb = getScopedStreamNameInternal(scope, streamName);
-      sb.append('/');
-      sb.append(segmentNumber);
-      sb.append(EPOCH_DELIMITER);
-      sb.append(epoch);
-      return sb.toString();
-  }
-*/
-
 func getEpoch(segmentId int64) int32 {
 	return int32(segmentId >> 32)
 }
@@ -35,11 +22,11 @@ func GetQualifiedStreamSegmentName(segment *v1.SegmentId) string {
 }
 
 func SegmentNameToId(segmentName string) (*v1.SegmentId, error) {
-	split := strings.Split("/", segmentName)
+	split := strings.Split(segmentName, "/")
 	scope := split[0]
 	stream := split[1]
 	other := split[2]
-	nums := strings.Split(EpochDelimiter, other)
+	nums := strings.Split(other, EpochDelimiter)
 	segmentId, err := strconv.Atoi(nums[0])
 	if err != nil {
 		return nil, err

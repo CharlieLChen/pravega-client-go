@@ -10,7 +10,6 @@ import (
 )
 
 var _ = Describe("Protocol Test", Label("Protocol"), func() {
-
 	var (
 		requestId       = int64(100)
 		lastEventNumber = int64(1)
@@ -39,6 +38,7 @@ var _ = Describe("Protocol Test", Label("Protocol"), func() {
 		host                      = "localhost"
 		callStack                 = "callStack"
 	)
+
 	When("Hello WireCommand", func() {
 		Context("encode and decode", func() {
 			hello := NewHello(100, 20)

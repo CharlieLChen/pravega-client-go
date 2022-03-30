@@ -30,6 +30,9 @@ func (L *FIFOList) Insert(key interface{}) {
 }
 
 func (l *FIFOList) DeleteTo(fn func(a, b interface{}) bool, key interface{}) {
+	if l.head == nil {
+		return
+	}
 	node := l.head
 	for node.next != nil {
 		node = node.next
@@ -40,6 +43,9 @@ func (l *FIFOList) DeleteTo(fn func(a, b interface{}) bool, key interface{}) {
 }
 
 func (l *FIFOList) ForEach(handler interface{}, fn func(handler, object interface{}) error) error {
+	if l.head == nil {
+		return nil
+	}
 	node := l.head
 	for node.next != nil {
 		node = node.next

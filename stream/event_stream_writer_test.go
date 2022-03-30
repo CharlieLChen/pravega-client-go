@@ -1,9 +1,11 @@
 package stream
 
 import (
+	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	types "io.pravega.pravega-client-go/controller/proto"
 	"testing"
+	"time"
 )
 
 func TestEventStreamWriter_WriteEvent(t *testing.T) {
@@ -29,9 +31,12 @@ func TestEventStreamWriter_WriteEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	streamWriter1 := NewEventStreamWriter("dell", "test", newController)
+
+	sockets := connection.NewSockets(newController)
+	streamWriter1 := NewEventStreamWriter("dell", "test", newController, sockets)
 	err = streamWriter1.WriteEvent(data, "hello")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	time.Sleep(time.Hour)
 }

@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	WaitEndless = math.MaxInt64
-	Now         = 0
+	Forever = math.MaxInt64
+	Now     = 0
 )
 
 type ResponseClient struct {
@@ -40,8 +40,9 @@ func (client *ResponseClient) GetResponse(ty *protocol.WireCommandType, timeout 
 		//overflow
 		if i < 1 {
 			duration = (time.Duration)(math.MaxInt64)
+		} else {
+			duration = (time.Duration)(time.Second.Milliseconds() * timeout)
 		}
-		duration = (time.Duration)(time.Second.Milliseconds() * timeout)
 	}
 	// nonblock
 	if getNow {

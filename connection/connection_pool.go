@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io.pravega.pravega-client-go/errors"
 	"io.pravega.pravega-client-go/protocol"
@@ -9,11 +10,24 @@ import (
 	"sync/atomic"
 )
 
+const (
+	UnOccupied = uint32(0)
+	Occupied   = uint32(1)
+	Closed     = uint32(2)
+	Failed     = uint32(10)
+)
+
 type ConnectionPool struct {
 	maxConnectionPerHost int
 	connections          []*Connection
 	lock                 sync.Mutex
 	created              int
+}
+
+func (pool *ConnectionPool) Close() {
+	for _, connection := range pool.connections {
+		connection.Close()
+	}
 }
 
 type Connection struct {
@@ -24,28 +38,36 @@ type Connection struct {
 	dispatcher *ResponseDispatcher
 }
 
-func (connect *Connection) release() {
-	// atomic operation is enough for memory barrier
-	atomic.SwapUint32(&connect.state, protocol.UnOccupied)
+func (connect *Connection) Close() {
+	connect.state = Closed
+	connect.TCPConn.Close()
+	log.Infof("connection %d to %s closed", connect.index, connect.url)
 }
 
-func (connect *Connection) parseResponseInternal() {
-	for {
-		decode, err := protocol.Decode(connect.TCPConn)
-		if err != nil {
-			log.Printf("Failed to parse response for command %v", err)
-			connect.releaseWithFailure()
-		}
-		connect.dispatcher.Dispatch(decode)
+func (connect *Connection) Write(data []byte) (protocol.Reply, error) {
+	_, err := connect.TCPConn.Write(data)
+	if err != nil {
+		return nil, err
 	}
+	decode, err := protocol.Decode(connect.TCPConn)
+	if err != nil {
+		return nil, err
+	}
+	reply, ok := decode.(protocol.Reply)
+	if !ok {
+		return nil, fmt.Errorf("not a reply command %v", decode)
+	}
+	return reply, err
 }
-func (connect *Connection) parseResponse() {
-	go connect.parseResponseInternal()
+
+func (connect *Connection) release() {
+	// atomic operation is enough for memory barrier
+	atomic.SwapUint32(&connect.state, UnOccupied)
 }
 
 func (connect *Connection) releaseWithFailure() {
 	// atomic operation is enough for memory barrier
-	atomic.SwapUint32(&connect.state, protocol.Failed)
+	atomic.SwapUint32(&connect.state, Failed)
 }
 func NewConnectionPool(maxConnectionPerHost int) *ConnectionPool {
 	return &ConnectionPool{
@@ -57,8 +79,8 @@ func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
 	pool.lock.Lock()
 	defer pool.lock.Unlock()
 	for _, connection := range pool.connections {
-		if connection.state == protocol.UnOccupied {
-			connection.state = protocol.Occupied
+		if connection.state == UnOccupied {
+			connection.state = Occupied
 			return connection, nil
 		}
 	}
@@ -68,18 +90,18 @@ func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
 		if err != nil {
 			return nil, err
 		}
-		conn.state = protocol.Occupied
+		conn.state = Occupied
 		return conn, nil
 	}
 
 	for {
 		allFailed := true
 		for _, connection := range pool.connections {
-			if connection.state == protocol.UnOccupied {
-				connection.state = protocol.Occupied
+			if connection.state == UnOccupied {
+				connection.state = Occupied
 				return connection, nil
 			}
-			if connection.state != protocol.Failed {
+			if connection.state != Failed {
 				allFailed = false
 			}
 			if allFailed {
@@ -98,12 +120,30 @@ func (pool *ConnectionPool) createConnection(url string) (*Connection, error) {
 		return nil, err
 	}
 	TCPConn := con.(*net.TCPConn)
+	_, err = TCPConn.Write(protocol.HelloBytes)
+	if err != nil {
+		log.Errorf("Failed to create connection for %v, %v", url, err)
+		return nil, err
+	}
+	decode, err := protocol.Decode(TCPConn)
+	if err != nil {
+		log.Errorf("Failed to create connection for %v, %v", url, err)
+		return nil, err
+	}
+	if decode.GetType() != protocol.TypeHello {
+		log.Errorf("get unexpected response when create connection %v, %v", url, decode.GetType())
+		return nil, err
+	}
+
 	connection := &Connection{
-		TCPConn: TCPConn,
-		state:   protocol.UnOccupied,
+		TCPConn:    TCPConn,
+		state:      UnOccupied,
+		dispatcher: pool.dispatcher,
+		url:        url,
 	}
 	pool.connections = append(pool.connections, connection)
 	connection.index = len(pool.connections) - 1
 	pool.created++
+
 	return connection, err
 }

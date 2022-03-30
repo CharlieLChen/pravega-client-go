@@ -8,13 +8,11 @@ const (
 	EncoderBufferSize  = 1024 * 1024
 	TypePlusLengthSize = 8
 	TypeSize           = 4
-	UnOccupied         = uint32(0)
-	Occupied           = uint32(1)
-	Failed             = uint32(10)
 )
 
 var (
 	LengthPlaceholder = make([]byte, 4)
+	HelloBytes        = NewCommandEncoder().EncodeCommand(NewHello(10, 10)).Data()
 )
 
 type CommandEncoder struct {

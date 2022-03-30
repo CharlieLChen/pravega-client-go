@@ -7,24 +7,30 @@ import (
 	types "io.pravega.pravega-client-go/controller/proto"
 )
 
-type Controller struct {
+type Controller interface {
+	GetCurrentSegments(scope, streamName string) ([]*types.SegmentId, error)
+	GetSegmentStoreURI(segmentId *types.SegmentId) (*types.NodeUri, error)
+	CreateScope(scope string) error
+	CreateStream(streamConfig *types.StreamConfig) error
+}
+type ControllerImpl struct {
 	controllerClient types.ControllerServiceClient
 	ctx              context.Context
 }
 
-func NewController(uri string) (*Controller, error) {
+func NewController(uri string) (*ControllerImpl, error) {
 	conn, error := grpc.Dial(uri, grpc.WithInsecure())
 	if error != nil {
 		return nil, error
 	}
 	client := types.NewControllerServiceClient(conn)
 	ctx := context.Background()
-	return &Controller{
+	return &ControllerImpl{
 		controllerClient: client,
 		ctx:              ctx,
 	}, nil
 }
-func (controller *Controller) GetCurrentSegments(scope, streamName string) ([]types.SegmentId, error) {
+func (controller *ControllerImpl) GetCurrentSegments(scope, streamName string) ([]*types.SegmentId, error) {
 	segments, err := controller.controllerClient.GetCurrentSegments(controller.ctx, &types.StreamInfo{
 		Scope:  scope,
 		Stream: streamName,
@@ -32,13 +38,13 @@ func (controller *Controller) GetCurrentSegments(scope, streamName string) ([]ty
 	if err != nil {
 		return nil, err
 	}
-	segmentIds := make([]types.SegmentId, len(segments.SegmentRanges))
+	segmentIds := make([]*types.SegmentId, len(segments.SegmentRanges))
 	for i, segmentRange := range segments.SegmentRanges {
-		segmentIds[i] = *segmentRange.SegmentId
+		segmentIds[i] = segmentRange.SegmentId
 	}
 	return segmentIds, nil
 }
-func (controller *Controller) GetSegmentStoreURI(segmentId *types.SegmentId) (*types.NodeUri, error) {
+func (controller *ControllerImpl) GetSegmentStoreURI(segmentId *types.SegmentId) (*types.NodeUri, error) {
 	nodeUri, err := controller.controllerClient.GetURI(controller.ctx, segmentId)
 	if err != nil {
 		return nil, err
@@ -46,7 +52,7 @@ func (controller *Controller) GetSegmentStoreURI(segmentId *types.SegmentId) (*t
 	return nodeUri, nil
 }
 
-func (controller *Controller) CreateScope(scope string) error {
+func (controller *ControllerImpl) CreateScope(scope string) error {
 	createScopeStatus, err := controller.controllerClient.CreateScope(controller.ctx, &types.ScopeInfo{Scope: scope})
 	if err != nil {
 		return err
@@ -56,7 +62,7 @@ func (controller *Controller) CreateScope(scope string) error {
 	}
 	return fmt.Errorf("creating scope error code %v", createScopeStatus.Status)
 }
-func (controller *Controller) CreateStream(streamConfig *types.StreamConfig) error {
+func (controller *ControllerImpl) CreateStream(streamConfig *types.StreamConfig) error {
 	createStreamStatus, err := controller.controllerClient.CreateStream(controller.ctx, streamConfig)
 	if err != nil {
 		return err

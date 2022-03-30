@@ -2,6 +2,8 @@ package stream
 
 import (
 	"hash/maphash"
+	"io.pravega.pravega-client-go/command"
+	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	types "io.pravega.pravega-client-go/controller/proto"
 	"io.pravega.pravega-client-go/segment"
@@ -10,13 +12,14 @@ import (
 type SegmentSelector struct {
 	scope         string
 	stream        string
-	controllerImp *controller.Controller
-	segmentIds    []types.SegmentId
+	controllerImp *controller.ControllerImpl
+	segmentIds    []*types.SegmentId
 	writers       map[int]*segment.SegmentOutputStream
 	hasher        *maphash.Hash
+	sockets       *connection.Sockets
 }
 
-func NewSegmentSelector(scope, stream string, controllerImp *controller.Controller) *SegmentSelector {
+func NewSegmentSelector(scope, stream string, controllerImp *controller.ControllerImpl, sockets *connection.Sockets) *SegmentSelector {
 	hasher := new(maphash.Hash)
 	m := map[int]*segment.SegmentOutputStream{}
 	return &SegmentSelector{
@@ -25,6 +28,7 @@ func NewSegmentSelector(scope, stream string, controllerImp *controller.Controll
 		hasher:        hasher,
 		controllerImp: controllerImp,
 		writers:       m,
+		sockets:       sockets,
 	}
 }
 func (selector *SegmentSelector) chooseSegmentWriter(routineKey string) (*segment.SegmentOutputStream, error) {
@@ -46,7 +50,9 @@ func (selector *SegmentSelector) chooseSegmentWriter(routineKey string) (*segmen
 	if ok {
 		return stream, nil
 	} else {
-		selector.writers[i] = segment.NewSegmentOutputStream(&selector.segmentIds[i], selector.controllerImp)
+		ch := make(chan *command.Command)
+		segmentOutputStream := segment.NewSegmentOutputStream(selector.segmentIds[i], selector.controllerImp, ch, selector.sockets)
+		selector.writers[i] = segmentOutputStream
 		return selector.writers[i], nil
 	}
 

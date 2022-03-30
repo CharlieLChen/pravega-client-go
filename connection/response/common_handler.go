@@ -12,3 +12,6 @@ func Hello(hello *protocol.Hello) {
 		log.Infof("Received hello: %v", hello)
 	}
 }
+func KeepAlive(keepAlive *protocol.KeepAlive) {
+	log.Infof("Received the keepAlive")
+}
