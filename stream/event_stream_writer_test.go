@@ -10,7 +10,7 @@ import (
 )
 
 func TestEventStreamWriter_WriteEvent(t *testing.T) {
-	data := make([]byte, 1024*1024)
+	data := make([]byte, 1024)
 	for i := range data {
 		data[i] = 'a'
 	}
@@ -28,7 +28,7 @@ func TestEventStreamWriter_WriteEvent(t *testing.T) {
 		AccessOperation: types.StreamInfo_READ_WRITE},
 		ScalingPolicy: &types.ScalingPolicy{
 			ScaleType:      types.ScalingPolicy_FIXED_NUM_SEGMENTS,
-			MinNumSegments: 3,
+			MinNumSegments: 1,
 		},
 	}
 	err = newController.CreateStream(config)
@@ -39,7 +39,7 @@ func TestEventStreamWriter_WriteEvent(t *testing.T) {
 	sockets := connection.NewSockets(newController)
 	streamWriter1 := NewEventStreamWriter("dell", "test", newController, sockets)
 	timestamps := time.Now()
-	num := 200
+	num := 200000
 	for i := 0; i < num; i++ {
 		streamWriter1.WriteEvent(data, "hello")
 	}
@@ -49,5 +49,5 @@ func TestEventStreamWriter_WriteEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	time.Sleep(time.Hour)
+	time.Sleep(time.Second)
 }

@@ -38,7 +38,7 @@ func (handler *AppendHandler) SendCommand(cmd protocol.WireCommand) (protocol.Re
 }
 
 func getBlockSize() int {
-	return 0
+	return 1024 * 1024
 }
 func (handler *AppendHandler) reset() {
 	handler.encoder.Reset()

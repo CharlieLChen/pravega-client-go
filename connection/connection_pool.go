@@ -74,7 +74,11 @@ func NewConnectionPool(maxConnectionPerHost int) *ConnectionPool {
 		maxConnectionPerHost: maxConnectionPerHost,
 	}
 }
-
+func (pool *ConnectionPool) displayConnection() {
+	for _, con := range pool.connections {
+		log.Infof("url:%s, index: %d, status: %d", con.url, con.index, con.state)
+	}
+}
 func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
 	pool.lock.Lock()
 	defer pool.lock.Unlock()
@@ -104,9 +108,10 @@ func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
 			if connection.state != Failed {
 				allFailed = false
 			}
-			if allFailed {
-				return nil, errors.Error_All_Connections_Failed
-			}
+		}
+		if allFailed {
+			pool.displayConnection()
+			return nil, errors.Error_All_Connections_Failed
 		}
 	}
 }

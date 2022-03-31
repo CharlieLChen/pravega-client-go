@@ -284,6 +284,9 @@ func (segmentOutput *SegmentOutputStream) WriteToNetwork() {
 			break
 		}
 
+		if reply == nil {
+			log.Errorf("Unexpected nil reply")
+		}
 		if reply.IsFailure() {
 			stop := segmentOutput.handleFailureResponse(reply)
 			if stop {

@@ -81,6 +81,7 @@ func (sockets *Sockets) Write(segmentName string, data []byte) (protocol.Reply, 
 		connection, err := sockets.getConnection(url)
 		// all connection are unavailable
 		if err != nil {
+			log.Errorf("All connections for %s are unavaiable, %v", url, err)
 			return nil, err
 		}
 		response, err := connection.Write(data)
@@ -94,7 +95,7 @@ func (sockets *Sockets) Write(segmentName string, data []byte) (protocol.Reply, 
 			}
 
 			connection.releaseWithFailure()
-			return nil, err
+			continue
 		}
 		connection.release()
 		//successfully
