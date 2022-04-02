@@ -3,6 +3,8 @@ package stream
 import (
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
+	"io.pravega.pravega-client-go/protocol"
+	"io.pravega.pravega-client-go/util"
 )
 
 type EventStreamWriter struct {
@@ -24,12 +26,8 @@ func NewEventStreamWriter(scope, streamName string, controllerImp *controller.Co
 		sockets:       sockets,
 	}
 }
-func (streamWriter *EventStreamWriter) WriteEvent(event []byte, routineKey string) error {
-	segmentWriter, err := streamWriter.selector.chooseSegmentWriter(routineKey)
-	if err != nil {
-		return err
-	}
-	segmentWriter.WriteCh <- event
-
-	return nil
+func (streamWriter *EventStreamWriter) WriteEvent(event []byte, routineKey string) (*util.Future, error) {
+	pendingEvent := protocol.NewPendingEvent(event, routineKey)
+	streamWriter.selector.EventCha <- pendingEvent
+	return pendingEvent.Future, nil
 }

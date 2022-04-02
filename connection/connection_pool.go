@@ -80,8 +80,8 @@ func (pool *ConnectionPool) displayConnection() {
 	}
 }
 func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
-	pool.lock.Lock()
-	defer pool.lock.Unlock()
+	//pool.lock.Lock()
+	//defer pool.lock.Unlock()
 	for _, connection := range pool.connections {
 		if connection.state == UnOccupied {
 			connection.state = Occupied

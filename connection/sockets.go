@@ -88,7 +88,7 @@ func (sockets *Sockets) Write(segmentName string, data []byte) (protocol.Reply, 
 
 		// the node may be down
 		if err != nil {
-			log.Errorf("failed to write data, retrying with another connection")
+			log.Errorf("failed to write data due to %v, retrying with another connection", err)
 			url, err = sockets.RefreshMappingFor(segmentName, url)
 			if err != nil {
 				return nil, err

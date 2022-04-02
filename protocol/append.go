@@ -10,17 +10,17 @@ type Append struct {
 	WriterId       uuid.UUID
 	EventNumber    int64
 	EventCount     int64
-	Data           []byte
+	PendingEvent   *PendingEvent
 	ExpectedLength *int64
 	FlowId         int64
 }
 
-func NewAppend(segment *types.SegmentId, writeId uuid.UUID, eventNumber int64, data []byte, flowId int64) *Append {
+func NewAppend(segment *types.SegmentId, writeId uuid.UUID, eventNumber int64, pendingEvent *PendingEvent, flowId int64) *Append {
 
 	return &Append{
 		Segment:        segment,
 		EventNumber:    eventNumber,
-		Data:           data,
+		PendingEvent:   pendingEvent,
 		FlowId:         flowId,
 		WriterId:       writeId,
 		EventCount:     1,

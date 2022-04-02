@@ -6,7 +6,7 @@ type Command struct {
 }
 
 const (
-	Flush  = 1
-	Resend = 2
-	Done   = 3
+	Flush = 1
+	Stop  = 2
+	Done  = 3
 )

@@ -25,7 +25,11 @@ func NewCommandEncoder() *CommandEncoder {
 	}
 }
 func (encoder *CommandEncoder) Reset() {
-	encoder.Buffer.Reset()
+	encoder.Buffer = io.NewByteBuffer(EncoderBufferSize)
+}
+
+func (encoder *CommandEncoder) ResetBuffer() {
+	encoder.Buffer = io.NewByteBuffer(EncoderBufferSize)
 }
 
 func (encoder *CommandEncoder) EncodeCommand(command WireCommand) *io.ByteBuffer {

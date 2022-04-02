@@ -13,17 +13,22 @@ type AppendHandler struct {
 	appendStartPosition int
 	eventStartPosition  int
 	eventCountPerBatch  int
+	blockSize           int
+	timer               *time.Timer
+	startTime           time.Time
 	flushTime           time.Time
 }
 
 func NewAppendHandler(segmentOutputStream *SegmentOutputStream) *AppendHandler {
 	handler := &AppendHandler{
 		segmentOutputStream: segmentOutputStream,
+		timer:               time.NewTimer(time.Second),
 	}
 	handler.segmentName = util.GetQualifiedStreamSegmentName(segmentOutputStream.segmentId)
 	handler.encoder = protocol.NewCommandEncoder()
 	handler.reset()
 	handler.flushTime = time.Now()
+	handler.blockSize = 1024
 	return handler
 }
 func (handler *AppendHandler) SendCommand(cmd protocol.WireCommand) (protocol.Reply, error) {
@@ -37,26 +42,34 @@ func (handler *AppendHandler) SendCommand(cmd protocol.WireCommand) (protocol.Re
 	return response, nil
 }
 
-func getBlockSize() int {
-	return 1024 * 1024
-}
 func (handler *AppendHandler) reset() {
 	handler.encoder.Reset()
 	handler.eventCountPerBatch = 0
 	handler.appendStartPosition = -1
 	handler.eventStartPosition = -1
+	handler.timer.Reset(0)
 }
+
 func (handler *AppendHandler) startAppend() {
+	handler.startTime = time.Now()
 	appendBlock := protocol.NewAppendBlock(handler.segmentOutputStream.writerId)
 	handler.appendStartPosition = handler.encoder.Buffer.Buffered()
 	handler.encoder.EncodeAppendBlock(appendBlock)
 	handler.eventStartPosition = handler.encoder.Buffer.Buffered()
+
 }
 func (handler *AppendHandler) appendStarted() bool {
 	return handler.appendStartPosition != -1
 }
-func (handler *AppendHandler) writeData(event []byte) error {
-	return handler.encoder.Buffer.Write(event)
+func (handler *AppendHandler) writeData(pendingEvent *protocol.PendingEvent) error {
+	event := &protocol.Event{
+		Data: pendingEvent.Data,
+	}
+	data, err := event.GetEncodedData()
+	if err != nil {
+		return err
+	}
+	return handler.encoder.Buffer.Write(data)
 }
 func (handler *AppendHandler) Buffered() []byte {
 	return handler.encoder.Buffer.Data()
@@ -66,13 +79,13 @@ func (handler *AppendHandler) SendAppend(append *protocol.Append) (bool, error) 
 	if !handler.appendStarted() {
 		handler.startAppend()
 	}
-	err := handler.writeData(append.Data)
+	err := handler.writeData(append.PendingEvent)
 	if err != nil {
 		return false, err
 	}
 
 	handler.eventCountPerBatch++
-	suggestedBlockSize := getBlockSize()
+	suggestedBlockSize := handler.blockSize
 	overhead := handler.eventStartPosition - handler.appendStartPosition
 	bufferedDataSize := handler.encoder.Buffer.Buffered() - overhead
 	if (suggestedBlockSize - bufferedDataSize) <= 0 {
@@ -89,9 +102,9 @@ func (handler *AppendHandler) SendAppend(append *protocol.Append) (bool, error) 
 
 }
 
-func (handler *AppendHandler) bufferComplete() error {
+func (handler *AppendHandler) bufferComplete() {
 	if !handler.appendStarted() {
-		return nil
+		return
 	}
 
 	overhead := handler.eventStartPosition - handler.appendStartPosition
@@ -100,11 +113,7 @@ func (handler *AppendHandler) bufferComplete() error {
 	end := protocol.NewAppendBlockEnd(handler.segmentOutputStream.writerId, int32(bufferedDataSize), int32(handler.eventCountPerBatch),
 		handler.segmentOutputStream.eventNumber, handler.segmentOutputStream.requestId)
 	handler.encoder.EncodeCommand(end)
-	err := handler.encoder.WriteIntAt(handler.appendStartPosition+protocol.TypeSize, int32(bufferedDataSize+overhead-protocol.TypePlusLengthSize))
-	if err != nil {
-		return err
-	}
-
+	//should always success
+	handler.encoder.WriteIntAt(handler.appendStartPosition+protocol.TypeSize, int32(bufferedDataSize+overhead-protocol.TypePlusLengthSize))
 	handler.flushTime = time.Now()
-	return nil
 }

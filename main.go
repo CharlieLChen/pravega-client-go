@@ -3,20 +3,26 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	types "io.pravega.pravega-client-go/controller/proto"
 	"io.pravega.pravega-client-go/stream"
+	"os"
+	"runtime/pprof"
 	"time"
 )
 
 func main() {
-	url := flag.String("url", "localhost:9090", "controller url")
+	f, _ := os.Create("profile")
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
+	url := flag.String("url", "127.0.0.1:9090", "controller url")
 	scope := flag.String("scope", "dell", "scope")
 	streamName := flag.String("stream", "test", "stream")
-	size := flag.Int("size", 1024*1024, "event size")
-	count := flag.Int("count", 1024, "event count")
+	size := flag.Int("size", 1024, "event size")
+	count := flag.Int("count", 1, "event count")
 
 	flag.Parse()
 	fmt.Println("url:", *url)
@@ -28,7 +34,7 @@ func main() {
 	for i := range data {
 		data[i] = 'a'
 	}
-	newController, err := controller.NewController("localhost:9090")
+	newController, err := controller.NewController(*url)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -45,6 +51,8 @@ func main() {
 			MinNumSegments: 1,
 		},
 	}
+	//duration = 10294
+	// each event = 0.050263671875
 	err = newController.CreateStream(config)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -54,6 +62,7 @@ func main() {
 	streamWriter1 := stream.NewEventStreamWriter("dell", "test", newController, sockets)
 	timestamps := time.Now()
 	num := *count
+	uuid.New().String()
 	for i := 0; i < num; i++ {
 		streamWriter1.WriteEvent(data, "hello")
 	}
