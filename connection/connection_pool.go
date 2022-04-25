@@ -80,8 +80,8 @@ func (pool *ConnectionPool) displayConnection() {
 	}
 }
 func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
-	//pool.lock.Lock()
-	//defer pool.lock.Unlock()
+	pool.lock.Lock()
+	defer pool.lock.Unlock()
 	for _, connection := range pool.connections {
 		if connection.state == UnOccupied {
 			connection.state = Occupied
@@ -110,7 +110,7 @@ func (pool *ConnectionPool) getConnection(url string) (*Connection, error) {
 			}
 		}
 		if allFailed {
-			pool.displayConnection()
+			//pool.displayConnection()
 			return nil, errors.Error_All_Connections_Failed
 		}
 	}
@@ -125,6 +125,10 @@ func (pool *ConnectionPool) createConnection(url string) (*Connection, error) {
 		return nil, err
 	}
 	TCPConn := con.(*net.TCPConn)
+	err = TCPConn.SetNoDelay(true)
+	if err != nil {
+		return nil, err
+	}
 	_, err = TCPConn.Write(protocol.HelloBytes)
 	if err != nil {
 		log.Errorf("Failed to create connection for %v, %v", url, err)

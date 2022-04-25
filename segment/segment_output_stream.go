@@ -1,6 +1,7 @@
 package segment
 
 import (
+	"fmt"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"io.pravega.pravega-client-go/command"
@@ -10,29 +11,24 @@ import (
 	"io.pravega.pravega-client-go/protocol"
 	"io.pravega.pravega-client-go/security/auth"
 	"io.pravega.pravega-client-go/util"
-	"sync/atomic"
-	"time"
 )
 
 type SegmentOutputStream struct {
-	segmentId      *v1.SegmentId
-	SegmentName    string
-	controller     *controller.ControllerImpl
-	writerId       uuid.UUID
-	tokenProvider  *auth.EmptyDelegationTokenProvider
-	requestId      int64
-	sockets        *connection.Sockets
-	eventNumber    int64
-	handler        *AppendHandler
-	setupStatus    int32
-	WriteCh        chan *protocol.PendingEvent
-	BufferedCh     chan []byte
-	stopCh         chan string
-	activeInflight []*protocol.Append
-	sealedInflight []*protocol.Append
-	State          int32
-	ControlCh      chan *command.Command
-	flushResultCh  chan int
+	segmentId     *v1.SegmentId
+	SegmentName   string
+	controller    *controller.ControllerImpl
+	writerId      uuid.UUID
+	tokenProvider *auth.EmptyDelegationTokenProvider
+	requestId     int64
+	sockets       *connection.Sockets
+	eventNumber   int64
+	handler       *AppendHandler
+	setupStatus   int32
+	WriteCh       chan *protocol.PendingEvent
+	stopCh        chan string
+	inflight      []*protocol.Append
+	State         int32
+	ControlCh     chan *command.Command
 }
 
 var (
@@ -42,28 +38,25 @@ var (
 	Close            = int32(1)
 )
 
-func NewSegmentOutputStream(segmentId *v1.SegmentId, controller *controller.ControllerImpl, control chan *command.Command, stopCh chan string, sockets *connection.Sockets) *SegmentOutputStream {
+func NewSegmentOutputStream(segmentId *v1.SegmentId, controller *controller.ControllerImpl, stopCh chan string, sockets *connection.Sockets) *SegmentOutputStream {
 	writerId, _ := uuid.NewUUID()
 	tokenProvider := &auth.EmptyDelegationTokenProvider{}
 	requestId := connection.NewFlow().AsLong()
 
 	segmentOutput := &SegmentOutputStream{
-		segmentId:      segmentId,
-		controller:     controller,
-		writerId:       writerId,
-		tokenProvider:  tokenProvider,
-		requestId:      requestId,
-		eventNumber:    0,
-		sockets:        sockets,
-		ControlCh:      control,
-		setupStatus:    SetupUnCompleted,
-		activeInflight: make([]*protocol.Append, 10),
-		sealedInflight: nil,
-		SegmentName:    util.GetQualifiedStreamSegmentName(segmentId),
-		WriteCh:        make(chan *protocol.PendingEvent),
-		BufferedCh:     make(chan []byte),
-		flushResultCh:  make(chan int),
-		stopCh:         stopCh,
+		segmentId:     segmentId,
+		controller:    controller,
+		writerId:      writerId,
+		tokenProvider: tokenProvider,
+		requestId:     requestId,
+		eventNumber:   0,
+		sockets:       sockets,
+		ControlCh:     make(chan *command.Command),
+		setupStatus:   SetupUnCompleted,
+		inflight:      make([]*protocol.Append, 0),
+		SegmentName:   util.GetQualifiedStreamSegmentName(segmentId),
+		WriteCh:       make(chan *protocol.PendingEvent),
+		stopCh:        stopCh,
 	}
 	segmentStoreHandler := NewAppendHandler(segmentOutput)
 	segmentOutput.handler = segmentStoreHandler
@@ -80,21 +73,20 @@ func (segmentOutput *SegmentOutputStream) write(append *protocol.Append) (bool, 
 		if stop {
 			return true, nil
 		}
+		return false, nil
+	} else {
+		return segmentOutput.send(append)
 	}
-
-	return false, segmentOutput.send(append)
-
 }
+
 func (segmentOutput *SegmentOutputStream) InflightPendingEvent() []*protocol.PendingEvent {
-	pendingEvent := make([]*protocol.PendingEvent, len(segmentOutput.sealedInflight)+len(segmentOutput.activeInflight))
-	for _, e := range segmentOutput.sealedInflight {
-		pendingEvent = append(pendingEvent, e.PendingEvent)
-	}
-	for _, e := range segmentOutput.activeInflight {
-		pendingEvent = append(pendingEvent, e.PendingEvent)
+	pendingEvent := make([]*protocol.PendingEvent, len(segmentOutput.inflight))
+	for i, e := range segmentOutput.inflight {
+		pendingEvent[i] = e.PendingEvent
 	}
 	return pendingEvent
 }
+
 func (segmentOutput *SegmentOutputStream) setupAppend() (bool, error) {
 	segmentName := util.GetQualifiedStreamSegmentName(segmentOutput.segmentId)
 	token := segmentOutput.tokenProvider.RetrieveToken()
@@ -106,29 +98,29 @@ func (segmentOutput *SegmentOutputStream) setupAppend() (bool, error) {
 		}
 
 		if response.IsFailure() {
-			stop := segmentOutput.handleFailureResponse(response)
-			return stop, nil
+			return segmentOutput.handleFailureResponse(response)
 		}
 
 		setup := response.(*protocol.AppendSetup)
-		return false, segmentOutput.handleAppendSetup(setup)
+		return segmentOutput.handleAppendSetup(setup)
 	}
 
 }
 
-func (segmentOutput *SegmentOutputStream) handleAppendSetup(appendSetup *protocol.AppendSetup) error {
-	log.Info("Received appendSetup {}", appendSetup)
+func (segmentOutput *SegmentOutputStream) handleAppendSetup(appendSetup *protocol.AppendSetup) (bool, error) {
+	log.Infof("Received appendSetup {%v}", appendSetup)
 
-	resend := append(segmentOutput.sealedInflight, segmentOutput.activeInflight...)
-	segmentOutput.sealedInflight = nil
-	segmentOutput.activeInflight = make([]*protocol.Append, len(resend))
+	resend := segmentOutput.inflight
+
+	segmentOutput.inflight = make([]*protocol.Append, 0)
 	for _, element := range resend {
 		if appendSetup.LastEventNumber < element.EventNumber {
-			segmentOutput.activeInflight = append(segmentOutput.activeInflight, element)
-			err := segmentOutput.send(element)
+			segmentOutput.inflight = append(segmentOutput.inflight, element)
+			stop, err := segmentOutput.send(element)
 			if err != nil {
-				return err
+				return stop, err
 			}
+
 		} else {
 			element.PendingEvent.Future.Complete(util.Nothing)
 		}
@@ -137,156 +129,110 @@ func (segmentOutput *SegmentOutputStream) handleAppendSetup(appendSetup *protoco
 	segmentOutput.setupStatus = SetupCompleted
 	segmentOutput.handler.reset()
 
-	return nil
+	return false, nil
 }
 
-func (segmentOutput *SegmentOutputStream) send(append *protocol.Append) error {
-	send, err := segmentOutput.handler.SendAppend(append)
+func (segmentOutput *SegmentOutputStream) send(append *protocol.Append) (bool, error) {
+	full, err := segmentOutput.handler.bufferEvent(append)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if send {
-		segmentOutput.sendToBufferChannel()
+	if full {
+		return segmentOutput.sendToNetwork()
 	}
-	return nil
-}
-func (segmentOutput *SegmentOutputStream) notifyFlushDone() {
-	go func() { segmentOutput.flushResultCh <- 1 }()
-}
-func (segmentOutput *SegmentOutputStream) waitFlushDone() {
-	start := time.Now()
-	<-segmentOutput.flushResultCh
-	waitDuration := int64(time.Now().Sub(start))
-
-	bufferDuration := int64(segmentOutput.handler.flushTime.Sub(segmentOutput.handler.startTime))
-	if bufferDuration == 0 {
-		bufferDuration = 10
-	}
-	rate := float32(waitDuration) / float32(bufferDuration)
-	if rate <= 0.01 {
-		segmentOutput.handler.blockSize = (segmentOutput.handler.blockSize / 10) * 9
-	}
-	if rate > 0.2 {
-		segmentOutput.handler.blockSize = int(float32(segmentOutput.handler.blockSize) * (1 + rate))
-	}
-	if segmentOutput.handler.blockSize > 7*1024*1024 {
-		segmentOutput.handler.blockSize = 6 * 1024 * 1024
-	}
+	return false, nil
 }
 
-func (segmentOutput *SegmentOutputStream) sendToBufferChannel() {
+func (segmentOutput *SegmentOutputStream) sendToNetwork() (bool, error) {
 	buffered := segmentOutput.handler.Buffered()
 	if len(buffered) == 0 {
-		return
+		return false, nil
 	}
 
-	segmentOutput.waitFlushDone()
+	reply, err := segmentOutput.sockets.Write(segmentOutput.SegmentName, buffered)
+	if err != nil {
+		log.Errorf("can't to write data to network %v", err)
+		return false, err
+	}
 
-	segmentOutput.sealedInflight = segmentOutput.activeInflight
-	segmentOutput.activeInflight = make([]*protocol.Append, 10)
-	segmentOutput.BufferedCh <- buffered
+	if reply.IsFailure() {
+		return segmentOutput.handleFailureResponse(reply)
+	}
+	dataAppended := reply.(*protocol.DataAppended)
+	segmentOutput.handleDataAppend(dataAppended)
 	segmentOutput.handler.reset()
+	return false, nil
 }
 
-func (segmentOutput *SegmentOutputStream) handleFailureResponse(response protocol.Reply) bool {
+func (segmentOutput *SegmentOutputStream) handleFailureResponse(response protocol.Reply) (bool, error) {
 	if response.GetType() == protocol.TypeWrongHost {
 		segmentName := util.GetQualifiedStreamSegmentName(segmentOutput.segmentId)
 		_, err := segmentOutput.sockets.RefreshMappingFor(segmentName, "")
 		if err != nil {
 			log.Errorf("Failed to refresh the host mapping for the segmentId: %v, will retry later. %v", segmentOutput.segmentId, err)
 		}
-		atomic.SwapInt32(&segmentOutput.setupStatus, SetupUnCompleted)
-		return false
+		segmentOutput.setupStatus = SetupUnCompleted
+		return false, err
 	}
 	if response.GetType() == protocol.TypeSegmentSealed {
-		return true
+		return true, nil
 	}
 	if response.GetType() == protocol.TypeNoSuchSegment {
 		// TODO: TransactionSegment
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
 func (segmentOutput *SegmentOutputStream) handleDataAppend(dataAppend *protocol.DataAppended) {
 	//TODO:                checkAckLevels(ackLevel, previousAckLevel);
 	//TODO:                State.noteSegmentLength(dataAppended.getCurrentSegmentWriteOffset());
-	//log.Infof("ACK event number: %d", dataAppend.EventNumber)
-	last := segmentOutput.sealedInflight[len(segmentOutput.sealedInflight)-1]
+	log.Infof("writer: %s, event number: %d", segmentOutput.writerId, dataAppend.EventNumber)
+	last := segmentOutput.inflight[len(segmentOutput.inflight)-1]
 	if last != nil {
 		if last.EventNumber != dataAppend.EventNumber {
-			log.Errorf("Miss data ")
-			segmentOutput.State = Close
+			err := fmt.Errorf("Miss data: expected EventNumber: %v, actually got: %v ", last.EventNumber, dataAppend.EventNumber)
+			panic(err)
 		}
-		for _, e := range segmentOutput.sealedInflight {
+		for _, e := range segmentOutput.inflight {
 			e.PendingEvent.Future.Complete(util.Nothing)
 		}
-		segmentOutput.sealedInflight = nil
+		segmentOutput.inflight = nil
 	}
-
 }
 
 func (segmentOutput *SegmentOutputStream) close() {
-	log.Infof("Close segment %s, event writer %s", segmentOutput.SegmentName, segmentOutput.writerId)
+	log.Infof("Closing segment %s, event writer %s", segmentOutput.SegmentName, segmentOutput.writerId)
 	segmentOutput.State = Close
-	close(segmentOutput.BufferedCh)
-
-	//unblock the network channel
-	select {
-	case <-segmentOutput.flushResultCh:
-	default:
-	}
-
-	close(segmentOutput.flushResultCh)
-
 	segmentOutput.stopCh <- segmentOutput.SegmentName
-
+	log.Infof("Closed segment %s, event writer %s", segmentOutput.SegmentName, segmentOutput.writerId)
 }
 
-func (segmentOutput *SegmentOutputStream) handleCommand(cmd *command.Command) bool {
+func (segmentOutput *SegmentOutputStream) handleCommand(cmd *command.Command) (bool, error) {
 	if cmd.Code == command.Flush {
-		segmentOutput.handler.bufferComplete()
-		segmentOutput.sendToBufferChannel()
-		for segmentOutput.sealedInflight != nil {
-		}
+		stop, err := segmentOutput.flush()
 		segmentOutput.ControlCh <- &command.Command{Code: command.Done}
-		return false
+		log.Infof("Flush done")
+		return stop, err
 	}
 	if cmd.Code == command.Stop {
-		segmentOutput.ControlCh <- &command.Command{Code: command.Done}
-		return true
+		_, err := segmentOutput.flush()
+		return true, err
 	}
-	return false
+	return false, nil
 }
 
-func (segmentOutput *SegmentOutputStream) WriteToNetwork() {
-	segmentOutput.notifyFlushDone()
-	for data := range segmentOutput.BufferedCh {
-		if segmentOutput.State == Close {
-			break
-		}
-		reply, err := segmentOutput.sockets.Write(segmentOutput.SegmentName, data)
-		if err != nil {
-			log.Errorf("can't to write data to network %v", err)
-			segmentOutput.State = Close
-			segmentOutput.notifyFlushDone()
-		}
-
-		if reply.IsFailure() {
-			stop := segmentOutput.handleFailureResponse(reply)
-			if stop {
-				segmentOutput.State = Close
-				segmentOutput.notifyFlushDone()
-			}
-		}
-		dataAppended := reply.(*protocol.DataAppended)
-		segmentOutput.handleDataAppend(dataAppended)
-		segmentOutput.notifyFlushDone()
+func (segmentOutput *SegmentOutputStream) flush() (bool, error) {
+	segmentOutput.handler.bufferComplete()
+	stop, err := segmentOutput.sendToNetwork()
+	if stop || err != nil {
+		return stop, err
 	}
+	segmentOutput.handler.reset()
+	return false, nil
 }
 func (segmentOutput *SegmentOutputStream) start() {
-	go segmentOutput.WriteToNetwork()
 	segmentOutput.State = Running
 	log.Infof("starting ")
 	for {
@@ -297,26 +243,50 @@ func (segmentOutput *SegmentOutputStream) start() {
 
 		select {
 		case cmd := <-segmentOutput.ControlCh:
-			stop := segmentOutput.handleCommand(cmd)
+			stop, err := segmentOutput.handleCommand(cmd)
 			if stop {
 				segmentOutput.close()
 				return
 			}
-		case data := <-segmentOutput.WriteCh:
-
-			segmentOutput.eventNumber = segmentOutput.eventNumber + 1
-			newAppend := protocol.NewAppend(segmentOutput.segmentId, segmentOutput.writerId, segmentOutput.eventNumber, data, segmentOutput.requestId)
-			segmentOutput.activeInflight = append(segmentOutput.activeInflight, newAppend)
-
-			stop, err := segmentOutput.write(newAppend)
-			if stop || err != nil {
+			if err != nil {
+				_, err := segmentOutput.setupAppend()
+				log.Errorf("can't setup append due to %v", err)
 				segmentOutput.close()
 				return
 			}
+		case data := <-segmentOutput.WriteCh:
+			segmentOutput.eventNumber = segmentOutput.eventNumber + 1
+			newAppend := protocol.NewAppend(segmentOutput.segmentId, segmentOutput.writerId, segmentOutput.eventNumber, data, segmentOutput.requestId)
+			segmentOutput.inflight = append(segmentOutput.inflight, newAppend)
+			stop, err := segmentOutput.write(newAppend)
+			if stop {
+				segmentOutput.close()
+				return
+			}
+			if err != nil {
+				log.Errorf("can't write event due to %v, try to setup append.", err)
+				_, err := segmentOutput.setupAppend()
+				log.Errorf("can't setup append due to %v", err)
+				segmentOutput.close()
+			}
 		case <-segmentOutput.handler.timer.C:
 			log.Infof("flush data due to the timeout")
-			segmentOutput.handler.bufferComplete()
-			segmentOutput.sendToBufferChannel()
+			if segmentOutput.setupStatus == SetupUnCompleted {
+				segmentOutput.handler.reset()
+				break
+			}
+			stop, err := segmentOutput.flush()
+			if stop {
+				segmentOutput.close()
+				return
+			}
+			if err != nil {
+				_, err := segmentOutput.setupAppend()
+				log.Errorf("can't setup append %v", err)
+				segmentOutput.close()
+				return
+			}
+			segmentOutput.handler.reset()
 		}
 	}
 

@@ -2,37 +2,37 @@ package stream
 
 import (
 	log "github.com/sirupsen/logrus"
-	"hash/maphash"
+	"github.com/spaolacci/murmur3"
 	"io.pravega.pravega-client-go/command"
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	types "io.pravega.pravega-client-go/controller/proto"
+	io_util "io.pravega.pravega-client-go/io"
 	"io.pravega.pravega-client-go/protocol"
 	"io.pravega.pravega-client-go/segment"
 	"io.pravega.pravega-client-go/util"
 	"sync"
-	"time"
 )
 
 type SegmentSelector struct {
 	scope               string
 	stream              string
 	controllerImp       *controller.ControllerImpl
-	segmentIds          []*types.SegmentId
+	segmentWithRange    []*types.SegmentRange
 	writers             map[int]*segment.SegmentOutputStream
 	writerStringMapping map[string]*segment.SegmentOutputStream
-	hasher              *maphash.Hash
+	hasher              murmur3.Hash128
 	sockets             *connection.Sockets
 	segmentsStopChan    chan string
 	EventCha            chan *protocol.PendingEvent
+	CommandCha          chan *command.Command
 	lock                sync.Mutex
-	timer               *time.Timer
 }
 
 func NewSegmentSelector(scope, stream string, controllerImp *controller.ControllerImpl, sockets *connection.Sockets) *SegmentSelector {
-	hasher := new(maphash.Hash)
+	hasher := murmur3.New128WithSeed(util.Seed)
 	m := map[int]*segment.SegmentOutputStream{}
-	return &SegmentSelector{
+	selector := SegmentSelector{
 		scope:               scope,
 		stream:              stream,
 		hasher:              hasher,
@@ -40,31 +40,36 @@ func NewSegmentSelector(scope, stream string, controllerImp *controller.Controll
 		writers:             m,
 		writerStringMapping: map[string]*segment.SegmentOutputStream{},
 		sockets:             sockets,
-		timer:               time.NewTimer(time.Minute),
-		segmentsStopChan:    make(chan string),
+		segmentsStopChan:    make(chan string, 100),
+		EventCha:            make(chan *protocol.PendingEvent),
+		CommandCha:          make(chan *command.Command),
 	}
+	go selector.start()
+	return &selector
+
 }
-func (s *SegmentSelector) close() {
-	close(s.EventCha)
-	for _, writer := range s.writers {
+func (selector *SegmentSelector) close() {
+	close(selector.EventCha)
+	for _, writer := range selector.writers {
 		writer.ControlCh <- &command.Command{Code: command.Stop}
 		//done
 		<-writer.ControlCh
 	}
 }
 
-func (s *SegmentSelector) write(event *protocol.PendingEvent) {
-	writer, err := s.chooseSegmentWriter(event.RoutineKey)
+func (selector *SegmentSelector) write(event *protocol.PendingEvent) {
+	writer, err := selector.chooseSegmentWriter(event.RoutineKey)
 	if err != nil {
 		log.Errorf("can't to get segment writer: %v", err)
 	}
 	writer.WriteCh <- event
 }
-func (s *SegmentSelector) deleteSegment(segmentName string) {
-	delete(s.writerStringMapping, segmentName)
+func (selector *SegmentSelector) deleteSegment(segmentName string) {
+	delete(selector.writerStringMapping, segmentName)
 	var key = -1
-	for index, id := range s.segmentIds {
-		name := util.GetQualifiedStreamSegmentName(id)
+	for index, id := range selector.segmentWithRange {
+		key++
+		name := util.GetQualifiedStreamSegmentName(id.SegmentId)
 		if name == segmentName {
 			key = index
 			break
@@ -74,58 +79,73 @@ func (s *SegmentSelector) deleteSegment(segmentName string) {
 		return
 	}
 	if key == 0 {
-		s.segmentIds = s.segmentIds[1:]
-	} else if key == len(s.segmentIds)-1 {
-		s.segmentIds = s.segmentIds[0 : len(s.segmentIds)-2]
+		selector.segmentWithRange = selector.segmentWithRange[1:]
+	} else if key == len(selector.segmentWithRange)-1 {
+		selector.segmentWithRange = selector.segmentWithRange[0 : len(selector.segmentWithRange)-2]
 	} else {
-		s.segmentIds = append(s.segmentIds[0:key], s.segmentIds[key+1:]...)
+		selector.segmentWithRange = append(selector.segmentWithRange[0:key], selector.segmentWithRange[key+1:]...)
 	}
-	delete(s.writers, key)
+	delete(selector.writers, key)
 }
-func (s *SegmentSelector) start() {
+func (selector *SegmentSelector) start() {
 	for {
 		select {
-		case segmentName := <-s.segmentsStopChan:
-			writer := s.writerStringMapping[segmentName]
+		case segmentName := <-selector.segmentsStopChan:
+			log.Infof("received the closing signal from %s", segmentName)
+			writer := selector.writerStringMapping[segmentName]
 			event := writer.InflightPendingEvent()
-			s.deleteSegment(segmentName)
+			selector.deleteSegment(segmentName)
+			selector.refreshSegments()
 			for _, e := range event {
-				s.write(e)
+				selector.write(e)
 			}
-		case event := <-s.EventCha:
-			s.write(event)
-		case <-s.timer.C:
-			s.refreshSegments()
+		case event := <-selector.EventCha:
+			selector.write(event)
+		case command := <-selector.CommandCha:
+			selector.handleCommand(command)
 		}
+	}
+}
+func (selector *SegmentSelector) handleCommand(cmd *command.Command) {
+	switch cmd.Code {
+	case command.Flush:
+		for _, writer := range selector.writers {
+			writer.ControlCh <- &command.Command{Code: command.Flush}
+			<-writer.ControlCh
+		}
+		selector.CommandCha <- &command.Command{Code: command.Done}
 	}
 }
 
 func (selector *SegmentSelector) chooseSegmentWriter(routineKey string) (*segment.SegmentOutputStream, error) {
-	_, err := selector.hasher.WriteString(routineKey)
+	data := []byte(routineKey)
+	_, err := selector.hasher.Write(data)
 	if err != nil {
 		return nil, err
 	}
-	sum64 := selector.hasher.Sum64()
+	upper, _ := selector.hasher.Sum128()
 	selector.hasher.Reset()
-	if selector.segmentIds == nil {
+	if selector.segmentWithRange == nil {
 		err := selector.refreshSegments()
 		if err != nil {
 			return nil, err
 		}
 	}
-	length := uint64(len(selector.segmentIds))
-	i := int(sum64 % length)
-	stream, ok := selector.writers[i]
-	if ok {
-		return stream, nil
-	} else {
-		controll := make(chan *command.Command)
-		segmentOutputStream := segment.NewSegmentOutputStream(selector.segmentIds[i], selector.controllerImp, controll, selector.segmentsStopChan,
-			selector.sockets)
-		selector.writers[i] = segmentOutputStream
-		selector.writerStringMapping[segmentOutputStream.SegmentName] = segmentOutputStream
-		return selector.writers[i], nil
+	toFloat64 := io_util.Int64ToFloat64(upper)
+	for i, segmentRange := range selector.segmentWithRange {
+		if segmentRange.MinKey < toFloat64 && toFloat64 < segmentRange.MaxKey {
+			writer, ok := selector.writers[i]
+			if ok {
+				return writer, nil
+			}
+			segmentOutputStream := segment.NewSegmentOutputStream(segmentRange.SegmentId, selector.controllerImp, selector.segmentsStopChan,
+				selector.sockets)
+			selector.writers[i] = segmentOutputStream
+			selector.writerStringMapping[segmentOutputStream.SegmentName] = segmentOutputStream
+			return selector.writers[i], nil
+		}
 	}
+	return nil, err
 
 }
 func (selector *SegmentSelector) refreshSegments() error {
@@ -133,6 +153,7 @@ func (selector *SegmentSelector) refreshSegments() error {
 	if err != nil {
 		return err
 	}
-	selector.segmentIds = segments
+	selector.segmentWithRange = segments
+	log.Infof("refreshed the segments")
 	return nil
 }

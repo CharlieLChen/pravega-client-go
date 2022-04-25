@@ -8,7 +8,7 @@ import (
 )
 
 type Controller interface {
-	GetCurrentSegments(scope, streamName string) ([]*types.SegmentId, error)
+	GetCurrentSegments(scope, streamName string) ([]*types.SegmentRange, error)
 	GetSegmentStoreURI(segmentId *types.SegmentId) (*types.NodeUri, error)
 	CreateScope(scope string) error
 	CreateStream(streamConfig *types.StreamConfig) error
@@ -30,7 +30,7 @@ func NewController(uri string) (*ControllerImpl, error) {
 		ctx:              ctx,
 	}, nil
 }
-func (controller *ControllerImpl) GetCurrentSegments(scope, streamName string) ([]*types.SegmentId, error) {
+func (controller *ControllerImpl) GetCurrentSegments(scope, streamName string) ([]*types.SegmentRange, error) {
 	segments, err := controller.controllerClient.GetCurrentSegments(controller.ctx, &types.StreamInfo{
 		Scope:  scope,
 		Stream: streamName,
@@ -38,11 +38,8 @@ func (controller *ControllerImpl) GetCurrentSegments(scope, streamName string) (
 	if err != nil {
 		return nil, err
 	}
-	segmentIds := make([]*types.SegmentId, len(segments.SegmentRanges))
-	for i, segmentRange := range segments.SegmentRanges {
-		segmentIds[i] = segmentRange.SegmentId
-	}
-	return segmentIds, nil
+
+	return segments.SegmentRanges, nil
 }
 func (controller *ControllerImpl) GetSegmentStoreURI(segmentId *types.SegmentId) (*types.NodeUri, error) {
 	nodeUri, err := controller.controllerClient.GetURI(controller.ctx, segmentId)

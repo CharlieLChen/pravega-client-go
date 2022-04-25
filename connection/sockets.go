@@ -88,7 +88,7 @@ func (sockets *Sockets) Write(segmentName string, data []byte) (protocol.Reply, 
 
 		// the node may be down
 		if err != nil {
-			log.Errorf("failed to write data due to %v, retrying with another connection", err)
+			log.Errorf("segmentName %s, failed to write data due to %v, retrying with another connection", segmentName, err)
 			url, err = sockets.RefreshMappingFor(segmentName, url)
 			if err != nil {
 				return nil, err
@@ -116,7 +116,7 @@ func (sockets *Sockets) getConnection(url string) (*Connection, error) {
 	if ok {
 		return pool.getConnection(url)
 	} else {
-		connectionPool := NewConnectionPool(10)
+		connectionPool := NewConnectionPool(1)
 		sockets.pools[url] = connectionPool
 		return connectionPool.getConnection(url)
 	}

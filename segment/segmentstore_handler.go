@@ -28,7 +28,7 @@ func NewAppendHandler(segmentOutputStream *SegmentOutputStream) *AppendHandler {
 	handler.encoder = protocol.NewCommandEncoder()
 	handler.reset()
 	handler.flushTime = time.Now()
-	handler.blockSize = 1024
+	handler.blockSize = 7 * 1024 * 1024
 	return handler
 }
 func (handler *AppendHandler) SendCommand(cmd protocol.WireCommand) (protocol.Reply, error) {
@@ -47,7 +47,7 @@ func (handler *AppendHandler) reset() {
 	handler.eventCountPerBatch = 0
 	handler.appendStartPosition = -1
 	handler.eventStartPosition = -1
-	handler.timer.Reset(0)
+	handler.timer.Reset(time.Second)
 }
 
 func (handler *AppendHandler) startAppend() {
@@ -75,7 +75,7 @@ func (handler *AppendHandler) Buffered() []byte {
 	return handler.encoder.Buffer.Data()
 }
 
-func (handler *AppendHandler) SendAppend(append *protocol.Append) (bool, error) {
+func (handler *AppendHandler) bufferEvent(append *protocol.Append) (bool, error) {
 	if !handler.appendStarted() {
 		handler.startAppend()
 	}

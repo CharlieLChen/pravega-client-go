@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"io.pravega.pravega-client-go/command"
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	"io.pravega.pravega-client-go/protocol"
@@ -30,4 +31,10 @@ func (streamWriter *EventStreamWriter) WriteEvent(event []byte, routineKey strin
 	pendingEvent := protocol.NewPendingEvent(event, routineKey)
 	streamWriter.selector.EventCha <- pendingEvent
 	return pendingEvent.Future, nil
+}
+func (streamWriter *EventStreamWriter) Flush() {
+	streamWriter.selector.CommandCha <- &command.Command{
+		Code: command.Flush,
+	}
+	<-streamWriter.selector.CommandCha
 }

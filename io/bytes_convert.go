@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"github.com/google/uuid"
 	"io"
+	"math"
 )
 
 func Write(out io.Writer, data interface{}) error {
@@ -123,4 +124,11 @@ func ReadWithLength(in io.Reader, size int) ([]byte, error) {
 		return nil, err
 	}
 	return buffer, nil
+}
+
+func Int64ToFloat64(hash uint64) float64 {
+	shifted := (hash >> 12) & 0x000fffffffffffff
+	shifted += 0x3ff0000000000000
+	val := math.Float64frombits(shifted)
+	return val - 1.0
 }
