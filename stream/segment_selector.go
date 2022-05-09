@@ -64,6 +64,7 @@ func (selector *SegmentSelector) write(event *protocol.PendingEvent) {
 	}
 	writer.WriteCh <- event
 }
+
 func (selector *SegmentSelector) deleteSegment(segmentName string) {
 	delete(selector.writerStringMapping, segmentName)
 	var key = -1

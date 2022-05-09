@@ -14,7 +14,6 @@ type EventStreamWriter struct {
 	selector      *SegmentSelector
 	controllerImp *controller.ControllerImpl
 	sockets       *connection.Sockets
-	dispatcher    *connection.ResponseDispatcher
 }
 
 func NewEventStreamWriter(scope, streamName string, controllerImp *controller.ControllerImpl, sockets *connection.Sockets) *EventStreamWriter {

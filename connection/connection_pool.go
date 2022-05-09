@@ -31,11 +31,10 @@ func (pool *ConnectionPool) Close() {
 }
 
 type Connection struct {
-	url        string
-	state      uint32
-	TCPConn    *net.TCPConn
-	index      int
-	dispatcher *ResponseDispatcher
+	url     string
+	state   uint32
+	TCPConn *net.TCPConn
+	index   int
 }
 
 func (connect *Connection) Close() {

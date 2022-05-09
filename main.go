@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/context"
+	"golang.org/x/sync/semaphore"
 	"io.pravega.pravega-client-go/connection"
 	"io.pravega.pravega-client-go/controller"
 	types "io.pravega.pravega-client-go/controller/proto"
@@ -23,13 +25,14 @@ func main() {
 	streamName := flag.String("stream", "test", "stream")
 	size := flag.Int("size", 1024*1024, "event size")
 	count := flag.Int("count", 100, "event count")
-
+	writerCount := flag.Int("writer_count", 2, "writer_count")
 	flag.Parse()
 	fmt.Println("url:", *url)
 	fmt.Println("scope:", *scope)
 	fmt.Println("stream:", *streamName)
 	fmt.Println("size:", *size)
 	fmt.Println("count:", *count)
+	fmt.Println("writer_count:", *writerCount)
 	data := make([]byte, *size)
 	for i := range data {
 		data[i] = 'a'
@@ -43,14 +46,14 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 	config := &types.StreamConfig{StreamInfo: &types.StreamInfo{
-		Stream:          "test",
+		Stream:          *streamName,
 		Scope:           "dell",
 		AccessOperation: types.StreamInfo_READ_WRITE},
 		ScalingPolicy: &types.ScalingPolicy{
 			ScaleType:      types.ScalingPolicy_FIXED_NUM_SEGMENTS,
 			TargetRate:     0,
 			ScaleFactor:    0,
-			MinNumSegments: 3,
+			MinNumSegments: 2,
 		},
 	}
 	//duration = 10294
@@ -59,20 +62,29 @@ func main() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-
-	sockets := connection.NewSockets(newController)
-	streamWriter1 := stream.NewEventStreamWriter("dell", "test", newController, sockets)
+	sem := semaphore.NewWeighted(int64(*writerCount))
+	ctx := context.TODO()
 	timestamps := time.Now()
-	num := *count
+	for i := 0; i < *writerCount; i++ {
+		sem.Acquire(ctx, 1)
+		go func() {
+			sockets := connection.NewSockets(newController)
+			streamWriter1 := stream.NewEventStreamWriter("dell", *streamName, newController, sockets)
 
-	for i := 0; i < num; i++ {
-		s := uuid.New().String()
-		streamWriter1.WriteEvent(data, s)
+			num := *count
+
+			for i := 0; i < num; i++ {
+				s := uuid.New().String()
+				streamWriter1.WriteEvent(data, s)
+			}
+			streamWriter1.Flush()
+			sem.Release(1)
+		}()
 	}
-	streamWriter1.Flush()
+	sem.Acquire(ctx, int64(*writerCount))
 	milliseconds := time.Now().Sub(timestamps).Milliseconds()
 	fmt.Printf("cost time: %d milliseconds\n", milliseconds)
-	fmt.Printf("each event: %f milliseconds\n", float64(milliseconds)/float64(num))
+	fmt.Printf("each event: %f milliseconds\n", float64(milliseconds)/float64(*count*(*writerCount)))
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

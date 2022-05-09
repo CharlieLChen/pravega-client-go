@@ -234,7 +234,6 @@ func (segmentOutput *SegmentOutputStream) flush() (bool, error) {
 }
 func (segmentOutput *SegmentOutputStream) start() {
 	segmentOutput.State = Running
-	log.Infof("starting ")
 	for {
 		if segmentOutput.State == Close {
 			segmentOutput.close()
@@ -268,6 +267,7 @@ func (segmentOutput *SegmentOutputStream) start() {
 				_, err := segmentOutput.setupAppend()
 				log.Errorf("can't setup append due to %v", err)
 				segmentOutput.close()
+				return
 			}
 		case <-segmentOutput.handler.timer.C:
 			log.Infof("flush data due to the timeout")
